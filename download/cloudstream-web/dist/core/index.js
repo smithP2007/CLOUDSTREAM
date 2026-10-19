@@ -7,4 +7,5 @@ export * from './schemas';
 export * from './provider';
 export * from './links';
 export * from './provider-host';
+export * from './registry';
 //# sourceMappingURL=index.js.map

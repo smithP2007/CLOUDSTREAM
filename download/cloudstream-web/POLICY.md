@@ -82,7 +82,7 @@ unclear, a legal review **before** implementation begins.
 
 ## 6. Operational commitments
 
-- **License hygiene.** This repository ships its own license (selection pending, D9-F). A
+- **License hygiene.** This repository ships its own license (selection pending, D15-F). A
   `NOTICE`/third-party license audit runs before any distribution of the software to others
   (roadmap Phase 7). Dependency licenses are recorded when added.
 - **Takedown & abuse contact.** Before any deployment beyond the operator's private use, the operator
