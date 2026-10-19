@@ -59,7 +59,7 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
   read-only as an architectural/behavioral specification, cited in `docs/`. No upstream source is
   vendored, translated line-by-line, or executed by this project.
 - **Consequences:** Documentation citations refer to upstream paths/lines for *behavior* only;
-  implementation is written from `docs/` descriptions. License remains freely choosable (D9-F).
+  implementation is written from `docs/` descriptions. License remains freely choosable (D15-F).
 
 ## D5 — No reuse or decompilation of the closed-source AniKoto `.cs3`
 
@@ -182,7 +182,7 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 
 ## D14 — Roadmap Phase 1 task 3 (`src/core/registry.ts`) deferred, not skipped
 
-- **Status:** Adopted (Phase 1 execution)
+- **Status:** Adopted (Phase 1 execution). **Implemented 2026-10-20 — matching semantics recorded as D16.**
 - **Context:** The user instruction for Phase 1 scoped the deliverable to the contract
   (`types.ts`, `provider.ts`), Zod schemas, host behavior, and tests; the provider/extractor registry
   (newest-wins URL matching, `ExtractorApi.kt:926–986`) has no behavior test in this scope and gains
@@ -190,7 +190,52 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 - **Decision:** `registry.ts` is the first task after this phase, still within roadmap Phase 1,
   before any Phase 2 work.
 - **Consequences:** None structural; `provider-host.ts` and `links.ts` were added as the minimal
-  helpers required to make the contract behaviors testable (per instruction).
+  helpers required to make the contract behaviors testable (per instruction). The registry was
+  completed as the final Phase 1 task with its behavior pinned by 44 tests; see D16 for the
+  matching-semantics decisions.
+
+## D16 — Registry URL matching: consistent normalization, newest-wins prefix, conservative mirror fallback
+
+- **Status:** Adopted (Phase 1, implemented in `src/core/registry.ts`)
+- **Context:** Roadmap Phase 1 task 3. Upstream has two URL→registry resolvers: the provider-level
+  `getApiFromUrlNull` (`MainAPI.kt:167` — naive raw `startsWith`, first-registered wins, no
+  normalization) and the extractor-level `loadExtractor` (`ExtractorApi.kt:926–986` — normalized
+  compare URL, reverse-order scan so *"the new registered ExtractorApi takes priority"*, then a
+  mirror-domain fallback `Levenshtein.partialRatio(mainUrl, url) > 80`). The task instruction
+  specifies newest-registered-wins prefix matching, i.e. the `loadExtractor` semantics.
+- **Decision:** `ProviderRegistry` implements the `loadExtractor` two-stage algorithm, with these
+  documented divergences/hardenings (all deterministic, all pinned by tests):
+  1. **Consistent normalization on BOTH sides** (`normalizeProviderUrl`): trim, lowercase, strip
+     `https://` / `http://` / protocol-relative `//` / bare-scheme prefix, strip one leading `www.`,
+     strip trailing slashes. Upstream lowercases only the incoming URL and its `schemaStripRegex`
+     misses `http:` — inconsistent; consistent normalization is the task instruction.
+  2. **Prefix boundary check**: the character after the matched prefix must be end-of-string,
+     `/`, `?`, `#` or `:`. Hardening beyond upstream's naive `startsWith`: a NEWER provider whose
+     domain is a string-prefix of an OLDER provider's domain (`example.com` vs
+     `example.company.net`) can no longer hijack the older provider's URLs.
+  3. **Mirror fallback strictly per documented behavior**: Levenshtein partial ratio computed with
+     the same normalization upstream's `Levenshtein.ratio` uses (substitution = 2, score =
+     `(la + lb − dist) / (la + lb)`), strict `> 80`, threshold fixed (not configurable), scored over
+     the SAME normalized strings (upstream compares raw strings; shared scheme prefixes would
+     inflate scores — normalized inputs are strictly more conservative). Newest-first scan, first
+     match wins — deterministic even when an older provider would score higher.
+  4. **Inherent containment property** (documented for reviewers): a URL containing a provider's
+     normalized `mainUrl` verbatim always scores 100 in the fallback, so the boundary check routes
+     such URLs between stages / decides which provider wins — it cannot suppress the match.
+     Upstream's overall end behavior is the same; look-alike-domain suppression belongs to the
+     Phase 2 content/SSRF guard, not the registry.
+  5. **No network unshortening**: upstream's step 1 (`unshortenLinkSafe`) is a network call; Phase 1
+     is network-free. Link unshortening becomes a Phase 2 pre-step before registry lookup.
+  6. **Fail-fast registration, never-throwing lookups**: registration validates the provider object
+     (non-empty `name`, non-empty normalized `mainUrl`, callable methods — an empty pattern would
+     prefix-match everything); lookups never throw and return `null` for malformed/empty/unknown
+     URLs (no `URL` parsing — pure string logic). A different instance re-registered under an
+     existing `name` replaces it at the newest position (mirrors the upstream clone-site override
+     concept, `MainAPI.kt:506–520`); re-registering the identical instance is a no-op.
+- **Consequences:** `getByUrl` returns a discriminated match (`method: 'prefix' | 'mirror'` plus the
+  winning `score` for mirror matches) so callers can audit why a provider matched (D3 auditability).
+  The registry holds first-party `Provider` objects only — no `.cs3` loading, no dynamic code, no
+  network I/O. Phase 3's extractor registry can reuse the same class for `Extractor`-style resolvers.
 
 ---
 
@@ -202,4 +247,4 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 | D3-F | Any provider outside the lawful categories (incl. AniKoto-style) | explicit legal review, superseding decision |
 | D6-F | Third-party/dynamic provider model (Phase 6 option B/C) | security review, sandbox design |
 | D7-F | ClearKey via EME for licensed content | explicit decision; default off |
-| D9-F | License selection for this repository | owner decision before any distribution (NOTICE audit, Phase 7) |
+| D15-F | License selection for this repository | owner decision before any distribution (NOTICE audit, Phase 7) |

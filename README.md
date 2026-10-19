@@ -7,7 +7,7 @@ A browser-based movie, series and anime application **inspired by** [CloudStream
 ## Policy & decisions
 
 - [`POLICY.md`](POLICY.md) — product scope, deployment posture, content-source rules, technical-conduct rules (no DRM circumvention, no unrestricted proxy, no upstream/AniKoto reuse).
-- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D9-F).
+- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14, D16) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
 
 ## Documentation
 
@@ -29,14 +29,15 @@ Clean-room TypeScript encoding of the verified CloudStream provider contract (se
 | `src/core/schemas.ts` | Zod schemas for every provider-boundary payload (non-coercive, unknown keys stripped) |
 | `src/core/links.ts` | Link pipeline: URL dedupe (first wins), quality sort (desc, unknown last, stable), subtitle dedupe, streaming-emission collector |
 | `src/core/provider-host.ts` | The host: error boundary (typed `ProviderResult`, never throws for provider faults), per-method timeouts, timeout→`AbortSignal` cancellation with `TimeoutError` reason, boundary validation, caller cancellation |
+| `src/core/registry.ts` | `ProviderRegistry`: typed ordered registry — URL normalization (scheme/case/`www.`/trailing slashes, both sides), newest-wins prefix matching with a boundary check, conservative Levenshtein mirror-domain fallback (strict > 80), never-throwing lookups |
 
-Host semantics pinned by tests (`tests/`, vitest): error isolation between requests, per-method timeouts, real AbortSignal cancellation (a bare race never claims cancellation), dedupe/sort determinism, safe validation failures, consistent link+subtitle emission.
+Host semantics pinned by tests (`tests/`, vitest, 91 tests): error isolation between requests, per-method timeouts, real AbortSignal cancellation (a bare race never claims cancellation), dedupe/sort determinism, safe validation failures, consistent link+subtitle emission, and registry matching (exact/prefix, newest-wins precedence, normalization, mirror fallback, malformed URLs, deterministic ambiguity resolution).
 
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (47 tests)
+npm test        # vitest (91 tests)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

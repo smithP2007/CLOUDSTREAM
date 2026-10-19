@@ -27,6 +27,7 @@
 
 **Goal:** encode the verified CloudStream contract as our own clean-room TypeScript interface. *No provider code yet.*
 **Dependency:** Phase 0.
+**Status:** ✅ Complete (2026-10-20) — all five tasks implemented in `src/core/` + `tests/` (91 vitest tests, typecheck/lint/build clean).
 **Tasks:**
 
 1. `src/core/types.ts` — value shapes mirroring verified semantics (not code):
@@ -85,7 +86,7 @@
 2. **Dailymotion / Invidious / Twitch / YouTube-class** — matches the official upstream extension set (**VERIFIED**: `recloudstream/extensions` = Dailymotion, InternetArchive, Invidious, Twitch, Youtube); these exercise extractor-style URL resolution (`ExtractorApi` equivalent) and the media proxy.
 3. *(Optional, post-launch)* **AniKoto-style anime aggregator** — implement from *behavioral observation only* of public endpoints (site + `api.ani.zip/mappings` mapper + embed hosts `megaplay.buzz`/`vidtube.site`/`vidwish.live` — static-dex findings in `web-compatibility-report.md` §4). Only after legal review; treat embed resolution as the high-churn component.
 
-**Also in this phase:** the **extractor registry** for embed-host resolvers (prefix match newest-wins + Levenshtein mirror fallback — verified semantics), and the **headless-browser fallback module** (Playwright) behind a per-provider flag for JS-challenge sites (replaces Android `WebViewResolver`; keep off by default).
+**Also in this phase:** the **extractor registry** for embed-host resolvers (prefix match newest-wins + Levenshtein mirror fallback — verified semantics; reuse the generic `ProviderRegistry` from Phase 1 `src/core/registry.ts` once the `Extractor` contract is introduced), and the **headless-browser fallback module** (Playwright) behind a per-provider flag for JS-challenge sites (replaces Android `WebViewResolver`; keep off by default).
 
 **Deliverable:** 2+ working providers + conformance harness (recorded fixtures, regression tests per provider). **Exit criteria:** search → details → playable links for Internet Archive, verified in the UI-less API layer.
 **Risk retired:** provider feasibility; anti-bot exposure; per-provider maintenance cost estimate.
@@ -173,4 +174,13 @@ P0 Legal ──► P1 Contract ──► P2 Server runtime ──► P3 Provider
 
 ## The exact next implementation task
 
-**Implement Phase 1, step 1–2: `src/core/types.ts` + `src/core/provider.ts`** — the TypeScript provider contract (interfaces and zod schemas for `Provider`, `HomePageResponse`, `SearchPage`, `LoadResponse` union, `Episode`, `PlaybackLink`, `SubtitleFile`), plus unit tests that pin the host semantics verified upstream: (a) host-owned try/catch error boundary, (b) per-method timeout with cancellation, (c) link dedupe + quality sort. This is the first executable milestone, it depends on nothing, and every later phase compiles against it.
+**Implement Phase 2, steps 1–2: `src/server/http/` fetch engine + `guard.ts` SSRF hardening.**
+Build the server-side HTTP layer that providers will use: an undici-based client with cookie jar,
+per-provider UA/referer profiles, redirect + size + timeout caps, TTL response caching, plus the
+SSRF guard (private-IP ranges, DNS-rebinding checks, header normalization for replayed headers,
+robots-considerate fetch policy). This is the first Phase 2 milestone because every later piece
+(link pipeline TTL cache, unshortening pre-step for registry lookups per D16, provider fixtures,
+health checks) depends on it, and it retires the security model risk. Reference:
+`implementation-roadmap.md` Phase 2; contracts to consume: `src/core/provider.ts` (`CallContext`),
+`src/core/registry.ts` (lookup + unshorten pre-step). Do NOT start real providers (Phase 3) before
+the guard layer tests are green.
