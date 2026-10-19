@@ -2,58 +2,50 @@
  * The provider registry — roadmap Phase 1 task 3, the clean-room TypeScript
  * encoding of the URL-based provider resolution verified upstream (see
  * `docs/provider-architecture.md` §3.1 and §5.2, `ExtractorApi.kt:926–986` and
- * `MainAPI.kt:167` at `recloudstream/cloudstream@eb962b4`).
+ * `MainAPI.kt:167` at `recloudstream/cloudstream@eb962b4`), HARDENED per the
+ * security review recorded in `docs/decisions.md` D17.
  *
- * Matching algorithm (two stages, both scanning newest-first):
+ * Matching algorithm (three checks, newest-first scan order preserved):
  *
- *  1. **Prefix stage.** The normalized provider `mainUrl` must be a prefix of
+ *  1. **Prefix check.** The normalized provider `mainUrl` must be a prefix of
  *     the normalized input URL, AND the character right after the prefix must
  *     be a boundary (end of string, `/`, `?`, `#` or `:`) — so `example.com`
  *     matches `example.com/watch` and `example.com:8080` but never
- *     `example.com.evil.io`. The first provider that matches wins; the scan
- *     runs in reverse registration order, so the newest-registered provider
- *     takes precedence over older matching providers (upstream:
- *     "Iterate in reverse order so the new registered ExtractorApi takes
- *     priority", `ExtractorApi.kt:936`).
- *  2. **Mirror stage** (only when NO provider prefix-matched). Fuzzy
- *     mirror-domain fallback: the newest-first scan returns the first provider
- *     whose normalized `mainUrl` scores a Levenshtein partial-ratio of
- *     strictly more than 80 (0–100) against the normalized URL — mirroring the
- *     documented upstream fallback (`Levenshtein.partialRatio(mainUrl, url) >
- *     80`, `ExtractorApi.kt:952–966`, comment: "this is to match mirror
- *     domains - like example.com, example.net").
+ *     `example.com.evil.io`. (Upstream: "Iterate in reverse order so the new
+ *     registered ExtractorApi takes priority", `ExtractorApi.kt:936`; the
+ *     boundary check is our hardening — upstream's `startsWith` is naive.)
+ *  2. **Subdomain check** (path-less patterns only). The URL host equals the
+ *     pattern host or is a label-boundary subdomain of it (`x.example.com` for
+ *     pattern `example.com`). Safe by construction: DNS delegation means only
+ *     the operator of `example.com` can publish hosts under it. Upstream got
+ *     this behavior accidentally, via the fuzzy fallback scoring 100.
+ *  3. **Mirror check** (structural rule; replaces the score-gated fuzzy scan).
+ *     Align the pattern host's labels to the TAIL of the URL host's labels:
+ *     all labels EXCEPT the final one must be exactly equal, and the final
+ *     label (the TLD) must differ — e.g. `streamtape.to` ↔ `streamtape.com`,
+ *     which is the documented upstream intent ("to match mirror domains - like
+ *     example.com, example.net"). The reported `score` is a Levenshtein
+ *     partial ratio over HOSTS ONLY (informational/audit).
  *
- * Documented divergences from upstream (recorded in `docs/decisions.md` D16):
- *
- *  - **Consistent normalization on BOTH sides.** Upstream lowercases only the
- *    incoming URL and strips only `https:` (its `schemaStripRegex` misses
- *    `http:`). Here both the URL and every `mainUrl` go through the same
- *    {@link normalizeProviderUrl}: trim, lowercase, strip `https://` /
- *    `http://` / protocol-relative `//` / bare `https:`-style scheme, strip one
- *    leading `www.`, strip trailing slashes.
- *  - **Prefix boundary check.** Upstream prefix matching is a naive
- *    `startsWith`; the boundary check here is deliberate hardening so a
- *    partial-domain prefix cannot hijack another site.
- *  - **Fuzzy over normalized strings.** Upstream compares raw strings; with
- *    shared scheme prefixes inflating partial-ratio scores. Normalized inputs
- *    are strictly more conservative (no common-prefix inflation).
- *  - **No network unshortening.** Upstream resolves URL shorteners first
- *    (`unshortenLinkSafe`, a network call). Phase 1 is network-free; link
- *    unshortening becomes a Phase 2 pre-step that runs BEFORE registry lookup.
- *
- * Inherent property of the documented fallback (worth stating for reviewers):
- * any URL that CONTAINS a provider's normalized `mainUrl` verbatim scores a
- * partial ratio of 100 — so the boundary check routes such URLs from the
- * prefix stage to the mirror stage (or decides WHICH provider wins a race),
- * it cannot suppress the match entirely. Upstream behaves the same way
- * overall: its naive prefix match resolves `example.com.evil.io` to the
- * `example.com` provider too. Suppression of look-alike domains is not a
- * registry concern; it belongs to the Phase 2 SSRF/content guard.
+ * Why the mirror rule is structural, not score-gated (D17): the upstream
+ * `Levenshtein.partialRatio(mainUrl, url) > 80` scan ran over the FULL URL, so
+ * any URL containing the provider's `mainUrl` verbatim — in the path, the
+ * query, or a hostile subdomain position like `example.com.evil.io` — scored
+ * 100 and hijacked the match. Host-only scoring does not fix that by itself
+ * (containment in a hostile suffix still scores 100), and a pure score gate
+ * cannot separate `example.net` (legitimate mirror, 72.7) from
+ * `example.com.evil.io` (attacker, 100). The structural rule keeps the
+ * legitimate-mirror behavior and eliminates every look-alike vector except
+ * exact name+TLD swaps, which are indistinguishable from mirrors by design
+ * (residual risk documented in D17; mitigated by provider curation + kill
+ * switch, never by the registry).
  *
  * Safety properties (pinned by tests):
  *  - Lookups NEVER throw: malformed, empty, or unknown URLs return `null`.
  *    No `URL` parsing is used — matching is pure string logic, so no runtime
  *    exception paths exist in the lookup path.
+ *  - A hostname appearing ONLY in the path or query can never select a
+ *    provider (mirror/subdomain checks are host-scoped).
  *  - Registration is fail-fast (first-party providers only; a broken
  *    registration is a programming error, rejected with `TypeError`).
  *  - No dynamic loading: providers are first-party `Provider` objects handed
@@ -107,14 +99,6 @@ export function normalizeProviderUrl(input: unknown): string {
 /* Levenshtein partial ratio (mirror-domain fallback scoring)                 */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Similarity threshold for the mirror-domain fallback, on a 0–100 scale.
- * Mirrors the upstream constant: a match requires a score STRICTLY greater
- * than 80 (`ExtractorApi.kt:959–961`). Deliberately NOT configurable —
- * configurability invites threshold drift away from the documented behavior.
- */
-export const MIRROR_MATCH_THRESHOLD = 80;
-
 /** Inputs longer than this are truncated before fuzzy scoring (bound cost). */
 const MAX_FUZZY_INPUT_LENGTH = 2048;
 
@@ -124,6 +108,10 @@ const MAX_FUZZY_INPUT_LENGTH = 2048;
  * edit-distance where substitution costs 2 (= delete + insert), scored as
  * `(lenA + lenB - distance) / (lenA + lenB) * 100`. Two empty strings are
  * 100; one empty string scores 0.
+ *
+ * NOTE (D17): upstream's `> 80` score threshold is no longer a match gate —
+ * the mirror rule is structural (label alignment). This function is retained
+ * for the informational mirror `score` and as a public utility.
  */
 export function levenshteinRatio(a: string, b: string): number {
   if (a.length === 0 && b.length === 0) return 100;
@@ -185,6 +173,40 @@ export function levenshteinPartialRatio(pattern: string, text: string): number {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Host extraction (mirror/subdomain checks are host-scoped — D17)            */
+/* -------------------------------------------------------------------------- */
+
+/** Domain-like host charset: lowercase alnum, dots, hyphens (punycode-safe). */
+const DOMAIN_LIKE = /^[a-z0-9.-]+$/;
+const MAX_HOST_LENGTH = 253;
+
+/** Strips a `:port` suffix (decimal digits only) from a host:port string. */
+function stripPort(hostPort: string): string {
+  if (hostPort.startsWith('[')) return hostPort; // IPv6 literal — not domain-like, gated later
+  const colon = hostPort.lastIndexOf(':');
+  if (colon >= 0 && /^\d+$/.test(hostPort.slice(colon + 1))) return hostPort.slice(0, colon);
+  return hostPort;
+}
+
+/**
+ * Extracts and validates the HOSTNAME from a normalized URL (or normalized
+ * `mainUrl`). Returns `null` for anything that is not a plain domain-like
+ * host: IPv6 literals, userinfo, empty/double labels, over-long hosts. The
+ * mirror and subdomain checks ONLY run on hosts returned here, so nothing
+ * that appears in a URL's path or query can influence them.
+ */
+function extractUrlHost(normalizedUrl: string): string | null {
+  const hostPort = normalizedUrl.split('/', 1)[0] ?? '';
+  let host = stripPort(hostPort);
+  if (host.endsWith('.')) host = host.slice(0, -1); // one trailing dot (FQDN form)
+  if (host === '' || host.length > MAX_HOST_LENGTH) return null;
+  if (!DOMAIN_LIKE.test(host)) return null;
+  const labels = host.split('.');
+  if (labels.some((label) => label === '')) return null; // empty label (leading/double dot)
+  return host;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Match results                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -195,10 +217,20 @@ export interface RegistryPrefixMatch {
 }
 
 /**
- * The provider matched via the mirror-domain fallback. `score` is the
- * partial-ratio of the WINNING provider (not necessarily the best score in
- * the registry — the newest-first scan stops at the first provider over the
- * threshold, mirroring upstream).
+ * The provider matched because the URL host IS the pattern host or a
+ * label-boundary subdomain of it (path-less patterns only). Safe by DNS
+ * delegation: only the pattern's operator can publish such hosts.
+ */
+export interface RegistrySubdomainMatch {
+  readonly method: 'subdomain';
+  readonly provider: Provider;
+}
+
+/**
+ * The provider matched via the structural mirror rule (same domain name,
+ * different final label/TLD — the documented upstream intent). `score` is an
+ * INFORMATIONAL Levenshtein partial ratio over hosts only (0–100); it does
+ * NOT gate the match — the structural label rule decides (D17).
  */
 export interface RegistryMirrorMatch {
   readonly method: 'mirror';
@@ -206,7 +238,7 @@ export interface RegistryMirrorMatch {
   readonly score: number;
 }
 
-export type RegistryUrlMatch = RegistryPrefixMatch | RegistryMirrorMatch;
+export type RegistryUrlMatch = RegistryPrefixMatch | RegistrySubdomainMatch | RegistryMirrorMatch;
 
 /**
  * Outcome of {@link ProviderRegistry.register}.
@@ -311,31 +343,70 @@ export class ProviderRegistry {
   }
 
   /**
-   * Resolves a provider by URL: newest-wins prefix matching, then the
-   * conservative mirror-domain fallback (see module docs). Never throws —
-   * malformed, empty, or unknown URLs return `null`.
+   * Resolves a provider by URL (hardened algorithm, D17 — see module docs):
+   *
+   *  Stage 1, newest-first: prefix check (full normalized URL + boundary
+   *  guard) OR same-host/subdomain check (path-less patterns, host-scoped).
+   *  Stage 2, newest-first: structural mirror rule — the pattern host's labels
+   *  align to the tail of the URL host's labels with ONLY the final label
+   *  (TLD) differing. The mirror `score` is informational (host-only partial
+   *  ratio), not a gate.
+   *
+   * Never throws — malformed, empty, or unknown URLs return `null`. A hostname
+   * appearing only in the path or query can never select a provider.
    */
   getByUrl(url: unknown): RegistryUrlMatch | null {
     const normalized = normalizeProviderUrl(url);
     if (normalized === '') return null;
+    const urlHost = extractUrlHost(normalized);
 
-    // Stage 1 — prefix, newest-first (reverse registration order).
+    // Stage 1 — deterministic host matching, newest-first (reverse order).
     for (let i = this.#providers.length - 1; i >= 0; i--) {
       const provider = this.#providers[i] as Provider;
       const pattern = normalizeProviderUrl(provider.mainUrl);
       if (pattern === '') continue; // cannot happen post-validation; defensive
+
+      // (a) Prefix: full-URL prefix with boundary guard.
       if (normalized.startsWith(pattern) && hasPrefixBoundary(normalized, pattern.length)) {
         return { method: 'prefix', provider };
       }
+
+      // (b) Same host / label-boundary subdomain — path-less patterns only.
+      if (!pattern.includes('/') && urlHost !== null) {
+        const patternHost = extractUrlHost(pattern);
+        if (
+          patternHost !== null &&
+          (urlHost === patternHost || urlHost.endsWith('.' + patternHost))
+        ) {
+          return { method: 'subdomain', provider };
+        }
+      }
     }
 
-    // Stage 2 — mirror-domain fallback, newest-first, strict > threshold.
-    for (let i = this.#providers.length - 1; i >= 0; i--) {
-      const provider = this.#providers[i] as Provider;
-      const pattern = normalizeProviderUrl(provider.mainUrl);
-      const score = levenshteinPartialRatio(pattern, normalized);
-      if (score > MIRROR_MATCH_THRESHOLD) {
-        return { method: 'mirror', provider, score };
+    // Stage 2 — structural mirror rule, newest-first (D17).
+    if (urlHost !== null) {
+      for (let i = this.#providers.length - 1; i >= 0; i--) {
+        const provider = this.#providers[i] as Provider;
+        const pattern = normalizeProviderUrl(provider.mainUrl);
+        if (pattern.includes('/')) continue; // path-bearing patterns match by prefix only
+        const patternHost = extractUrlHost(pattern);
+        if (patternHost === null || patternHost === urlHost) continue;
+        const patternLabels = patternHost.split('.');
+        if (patternLabels.length < 2) continue; // need name + TLD to mirror
+        const urlLabels = urlHost.split('.');
+        if (urlLabels.length < patternLabels.length) continue;
+        const tail = urlLabels.slice(urlLabels.length - patternLabels.length);
+        const nameLabelsEqual = patternLabels
+          .slice(0, -1)
+          .every((label, index) => tail[index] === label);
+        const tldDiffers = tail[tail.length - 1] !== patternLabels[patternLabels.length - 1];
+        if (nameLabelsEqual && tldDiffers) {
+          return {
+            method: 'mirror',
+            provider,
+            score: levenshteinPartialRatio(patternHost, urlHost),
+          };
+        }
       }
     }
 
