@@ -1,0 +1,1048 @@
+/**
+ * Zod schemas for data crossing the provider trust boundary (D12).
+ *
+ * Every value a {@link Provider} method *returns* is untrusted input: the host
+ * validates it with these schemas before it reaches any caller
+ * (`provider-host.ts`). Provider *instances* are first-party TypeScript
+ * objects (not wire data) and are therefore NOT described by a schema — the
+ * `Provider` interface in `./provider.ts` is the compile-time contract for them.
+ *
+ * Validation posture (D12):
+ *  - non-coercive: no `z.coerce`; wrong primitive types fail;
+ *  - unknown keys are stripped (forward compatibility with provider churn);
+ *  - optional-and-nullable is modeled explicitly with `.nullish()`;
+ *  - opaque fields (`Episode.data`, `dataUrl`, row `data`) accept any string —
+ *    their *interpretation* is provider-internal by contract.
+ *
+ * Type agreement: the schemas below are maintained in lockstep with the
+ * hand-written interfaces in `./types.ts`; tests pin the agreement by assigning
+ * parsed samples to the interface types at compile time.
+ */
+import { z } from 'zod';
+export declare const TvTypeSchema: z.ZodEnum<{
+    Movie: "Movie";
+    AnimeMovie: "AnimeMovie";
+    TvSeries: "TvSeries";
+    Cartoon: "Cartoon";
+    Anime: "Anime";
+    OVA: "OVA";
+    Torrent: "Torrent";
+    Documentary: "Documentary";
+    AsianDrama: "AsianDrama";
+    Live: "Live";
+    NSFW: "NSFW";
+    Others: "Others";
+    Music: "Music";
+    AudioBook: "AudioBook";
+    CustomMedia: "CustomMedia";
+    Audio: "Audio";
+    Podcast: "Podcast";
+    Video: "Video";
+}>;
+export declare const DubStatusSchema: z.ZodEnum<{
+    Dubbed: "Dubbed";
+    Subbed: "Subbed";
+}>;
+export declare const SearchQualitySchema: z.ZodEnum<{
+    Cam: "Cam";
+    CamRip: "CamRip";
+    DVD: "DVD";
+    SD: "SD";
+    HD: "HD";
+    FullHD: "FullHD";
+    QuadHD: "QuadHD";
+    BlueRay: "BlueRay";
+    FourK: "FourK";
+}>;
+export declare const PlaybackLinkTypeSchema: z.ZodEnum<{
+    video: "video";
+    hls: "hls";
+    dash: "dash";
+}>;
+export declare const SearchResponseSchema: z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+        Cam: "Cam";
+        CamRip: "CamRip";
+        DVD: "DVD";
+        SD: "SD";
+        HD: "HD";
+        FullHD: "FullHD";
+        QuadHD: "QuadHD";
+        BlueRay: "BlueRay";
+        FourK: "FourK";
+    }>>>;
+    score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+export declare const MainPageDataSchema: z.ZodObject<{
+    name: z.ZodString;
+    data: z.ZodString;
+    horizontalImages: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+}, z.core.$strip>;
+/**
+ * Host→provider direction (trusted today), but defined here because Phase 2's
+ * HTTP API will receive homepage-row parameters from the browser and must
+ * validate them with the same shape.
+ */
+export declare const MainPageRequestSchema: z.ZodObject<{
+    name: z.ZodString;
+    data: z.ZodString;
+    horizontalImages: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+}, z.core.$strip>;
+export declare const HomePageListSchema: z.ZodObject<{
+    name: z.ZodString;
+    items: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>;
+    isHorizontalImages: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+}, z.core.$strip>;
+export declare const HomePageResponseSchema: z.ZodObject<{
+    lists: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        items: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            url: z.ZodString;
+            providerName: z.ZodString;
+            type: z.ZodEnum<{
+                Movie: "Movie";
+                AnimeMovie: "AnimeMovie";
+                TvSeries: "TvSeries";
+                Cartoon: "Cartoon";
+                Anime: "Anime";
+                OVA: "OVA";
+                Torrent: "Torrent";
+                Documentary: "Documentary";
+                AsianDrama: "AsianDrama";
+                Live: "Live";
+                NSFW: "NSFW";
+                Others: "Others";
+                Music: "Music";
+                AudioBook: "AudioBook";
+                CustomMedia: "CustomMedia";
+                Audio: "Audio";
+                Podcast: "Podcast";
+                Video: "Video";
+            }>;
+            posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+                Cam: "Cam";
+                CamRip: "CamRip";
+                DVD: "DVD";
+                SD: "SD";
+                HD: "HD";
+                FullHD: "FullHD";
+                QuadHD: "QuadHD";
+                BlueRay: "BlueRay";
+                FourK: "FourK";
+            }>>>;
+            score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        }, z.core.$strip>>;
+        isHorizontalImages: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    }, z.core.$strip>>;
+    hasNext: z.ZodBoolean;
+}, z.core.$strip>;
+export declare const SearchPageSchema: z.ZodObject<{
+    items: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>;
+    hasNext: z.ZodBoolean;
+    nextKey: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+export declare const SearchResponseListSchema: z.ZodArray<z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+        Cam: "Cam";
+        CamRip: "CamRip";
+        DVD: "DVD";
+        SD: "SD";
+        HD: "HD";
+        FullHD: "FullHD";
+        QuadHD: "QuadHD";
+        BlueRay: "BlueRay";
+        FourK: "FourK";
+    }>>>;
+    score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>>;
+export declare const EpisodeSchema: z.ZodObject<{
+    data: z.ZodString;
+    name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, z.core.$strip>;
+export declare const ActorSchema: z.ZodObject<{
+    name: z.ZodString;
+    role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+export declare const TrailerDataSchema: z.ZodObject<{
+    url: z.ZodString;
+    referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+export declare const MovieLoadResponseSchema: z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"movie">;
+    dataUrl: z.ZodString;
+}, z.core.$strip>;
+export declare const TvSeriesLoadResponseSchema: z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"tvSeries">;
+    episodes: z.ZodArray<z.ZodObject<{
+        data: z.ZodString;
+        name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export declare const AnimeLoadResponseSchema: z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"anime">;
+    otherName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    episodes: z.ZodObject<{
+        Dubbed: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            data: z.ZodString;
+            name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        }, z.core.$strip>>>;
+        Subbed: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            data: z.ZodString;
+            name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        }, z.core.$strip>>>;
+    }, z.core.$strip>;
+}, z.core.$strip>;
+export declare const LiveStreamLoadResponseSchema: z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"liveStream">;
+    dataUrl: z.ZodString;
+}, z.core.$strip>;
+export declare const LoadResponseSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"movie">;
+    dataUrl: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"tvSeries">;
+    episodes: z.ZodArray<z.ZodObject<{
+        data: z.ZodString;
+        name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    }, z.core.$strip>>;
+}, z.core.$strip>, z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"anime">;
+    otherName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    episodes: z.ZodObject<{
+        Dubbed: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            data: z.ZodString;
+            name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        }, z.core.$strip>>>;
+        Subbed: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            data: z.ZodString;
+            name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            season: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            episode: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            date: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            runTime: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        }, z.core.$strip>>>;
+    }, z.core.$strip>;
+}, z.core.$strip>, z.ZodObject<{
+    name: z.ZodString;
+    url: z.ZodString;
+    providerName: z.ZodString;
+    type: z.ZodEnum<{
+        Movie: "Movie";
+        AnimeMovie: "AnimeMovie";
+        TvSeries: "TvSeries";
+        Cartoon: "Cartoon";
+        Anime: "Anime";
+        OVA: "OVA";
+        Torrent: "Torrent";
+        Documentary: "Documentary";
+        AsianDrama: "AsianDrama";
+        Live: "Live";
+        NSFW: "NSFW";
+        Others: "Others";
+        Music: "Music";
+        AudioBook: "AudioBook";
+        CustomMedia: "CustomMedia";
+        Audio: "Audio";
+        Podcast: "Podcast";
+        Video: "Video";
+    }>;
+    posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    year: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    plot: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tags: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString>>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    trailers: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        url: z.ZodString;
+        referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    recommendations: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+        providerName: z.ZodString;
+        type: z.ZodEnum<{
+            Movie: "Movie";
+            AnimeMovie: "AnimeMovie";
+            TvSeries: "TvSeries";
+            Cartoon: "Cartoon";
+            Anime: "Anime";
+            OVA: "OVA";
+            Torrent: "Torrent";
+            Documentary: "Documentary";
+            AsianDrama: "AsianDrama";
+            Live: "Live";
+            NSFW: "NSFW";
+            Others: "Others";
+            Music: "Music";
+            AudioBook: "AudioBook";
+            CustomMedia: "CustomMedia";
+            Audio: "Audio";
+            Podcast: "Podcast";
+            Video: "Video";
+        }>;
+        posterUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        quality: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+            Cam: "Cam";
+            CamRip: "CamRip";
+            DVD: "DVD";
+            SD: "SD";
+            HD: "HD";
+            FullHD: "FullHD";
+            QuadHD: "QuadHD";
+            BlueRay: "BlueRay";
+            FourK: "FourK";
+        }>>>;
+        score: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        id: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    actors: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        role: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        image: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>>>;
+    comingSoon: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
+    syncData: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    kind: z.ZodLiteral<"liveStream">;
+    dataUrl: z.ZodString;
+}, z.core.$strip>], "kind">;
+export declare const PlaybackLinkSchema: z.ZodObject<{
+    source: z.ZodString;
+    name: z.ZodString;
+    url: z.ZodString;
+    type: z.ZodEnum<{
+        video: "video";
+        hls: "hls";
+        dash: "dash";
+    }>;
+    quality: z.ZodNullable<z.ZodNumber>;
+    referer: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    headers: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodString>>>;
+}, z.core.$strip>;
+export declare const SubtitleFileSchema: z.ZodObject<{
+    url: z.ZodString;
+    language: z.ZodString;
+    filename: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+/** The `loadLinks` boolean return ("did I handle this data?"). */
+export declare const HandledSchema: z.ZodBoolean;
+//# sourceMappingURL=schemas.d.ts.map
