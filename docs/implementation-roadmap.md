@@ -63,6 +63,7 @@
 
 **Goal:** build the server-side machinery that CloudStream's Android host provides.
 **Dependency:** Phase 1.
+**Status:** ◐ In progress — tasks 1–2 complete (2026-10-20): `src/server/http/` engine + guard (`D18`); tasks 3–5 pending.
 **Tasks:**
 
 1. **HTTP engine** (`src/server/http/`): fetch/undici client with cookie jar, per-provider UA/referer profiles, redirect + size + timeout caps, response caching with TTL (equivalent of nicehttp's `cacheTime` and the 20-min link cache, `RepoLinkGenerator.kt:73`).
@@ -174,13 +175,17 @@ P0 Legal ──► P1 Contract ──► P2 Server runtime ──► P3 Provider
 
 ## The exact next implementation task
 
-**Implement Phase 2, steps 1–2: `src/server/http/` fetch engine + `guard.ts` SSRF hardening.**
-Build the server-side HTTP layer that providers will use: an undici-based client with cookie jar,
-per-provider UA/referer profiles, redirect + size + timeout caps, TTL response caching, plus the
-SSRF guard (private-IP ranges, DNS-rebinding checks, header normalization for replayed headers,
-robots-considerate fetch policy). This is the first Phase 2 milestone because every later piece
-(link pipeline TTL cache, unshortening pre-step for registry lookups per D16, provider fixtures,
-health checks) depends on it, and it retires the security model risk. Reference:
-`implementation-roadmap.md` Phase 2; contracts to consume: `src/core/provider.ts` (`CallContext`),
-`src/core/registry.ts` (lookup + unshorten pre-step). Do NOT start real providers (Phase 3) before
-the guard layer tests are green.
+**Implement Phase 2, steps 3–5: HTML/JSON toolkit, link pipeline, and observability.**
+1. **HTML/JSON toolkit**: cheerio + zod JSON parsing helpers, a `p/a/c/k/e` (JsUnpacker-equivalent)
+   unpacker and a `node:vm`-sandboxed snippet runner (no network/fs) — only if a provider requires
+   them.
+2. **Link pipeline** (`src/server/links/`): dedupe by URL, quality sort (`sortUrls` semantics),
+   subtitle name dedupe, TTL cache per `(provider, episodeId)` — reusing `src/core/links.ts`
+   behaviors and `TtlCache`.
+3. **Observability**: structured per-provider-call logging (via the engine's redacted event sink),
+   `GET /api/providers/health` shape, and the provider kill-switch flag (mirrors
+   `SitePlugin.status`, `RepositoryManager.kt:50–78`).
+
+Everything builds on the now-complete engine + guard (D18): fetch through `HttpEngine`, validate
+through the guard, unshorten link targets through the engine BEFORE registry lookups (per D16/D17).
+Do NOT start real providers (Phase 3) until these are in and tested.

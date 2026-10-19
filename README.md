@@ -2,12 +2,12 @@
 
 A browser-based movie, series and anime application **inspired by** [CloudStream](https://github.com/recloudstream/cloudstream) — designed to run in a PC browser without the Android app.
 
-**Status: Phase 0 (policy) and Phase 1 (contract layer) complete; Phase 2 not started.**
+**Status: Phase 0–1 complete; Phase 2 steps 1–2 (HTTP engine + SSRF guard) complete; Phase 2 steps 3+ not started.**
 
 ## Policy & decisions
 
 - [`POLICY.md`](POLICY.md) — product scope, deployment posture, content-source rules, technical-conduct rules (no DRM circumvention, no unrestricted proxy, no upstream/AniKoto reuse).
-- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14, D16) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
+- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14, D16–D18) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
 
 ## Documentation
 
@@ -31,13 +31,27 @@ Clean-room TypeScript encoding of the verified CloudStream provider contract (se
 | `src/core/provider-host.ts` | The host: error boundary (typed `ProviderResult`, never throws for provider faults), per-method timeouts, timeout→`AbortSignal` cancellation with `TimeoutError` reason, boundary validation, caller cancellation |
 | `src/core/registry.ts` | `ProviderRegistry`: typed ordered registry — URL normalization (scheme/case/`www.`/trailing slashes, both sides), newest-wins prefix + subdomain matching with a boundary check, structural (host-scoped) mirror-domain rule with informational Levenshtein score, never-throwing lookups (D17 hardening) |
 
-Host semantics pinned by tests (`tests/`, vitest, 91 tests): error isolation between requests, per-method timeouts, real AbortSignal cancellation (a bare race never claims cancellation), dedupe/sort determinism, safe validation failures, consistent link+subtitle emission, and registry matching (exact/prefix, newest-wins precedence, normalization, mirror fallback, malformed URLs, deterministic ambiguity resolution).
+Host semantics pinned by tests (`tests/`, vitest, 187 tests): error isolation between requests, per-method timeouts, real AbortSignal cancellation (a bare race never claims cancellation), dedupe/sort determinism, safe validation failures, consistent link+subtitle emission, and registry matching (exact/prefix/subdomain, newest-wins precedence, normalization, structural mirror rule, adversarial look-alike/suffix/path-query rejection, malformed URLs, deterministic ambiguity resolution).
+
+## Phase 2 — server runtime (`src/server/http/`)
+
+| Module | Contents |
+|---|---|
+| `guard.ts` | SSRF destination guard: scheme allowlist, credential rejection, hostname blocklist (localhost/local/internal/metadata), full IPv4+IPv6 non-public range policy (incl. WHATWG-normalized encoded forms, IPv4-mapped unwrapping, 6to4/NAT64/Teredo blocks), operator `approvedDestinations` exceptions |
+| `dns.ts` | `GuardedDnsResolver`: resolves all A/AAAA records, validates EVERY one (fail closed on any non-public record), caches the validated set, and replaces undici's connector `lookup` so connections can only use validated addresses (anti-rebinding pinning) |
+| `engine.ts` | `HttpEngine`: total-deadline timeouts + caller `AbortSignal`, manual redirect handling with per-hop re-validation (redirects can never reach prohibited destinations), cross-host credential stripping, response size cap, bounded TTL cache, typed `HttpResult` (never throws for expected failures), query-free events |
+| `cookies.ts` | Per-provider RFC 6265-style cookie jar (opt-in): domain/path/secure/expiry rules, foreign-domain planting rejected, bounded |
+| `headers.ts` | Header denylist normalization (hop-by-hop/`host`/`content-length`/`cookie`), injection checks, `redactHeadersForLog` |
+| `cache.ts` | Generic bounded TTL+LRU cache (responses, DNS, robots) |
+| `robots.ts` | RFC 9309-ish robots.txt gate: longest-match, allow-wins-ties, UA group specificity, 4xx=allow / 5xx+failure=disallow (fail closed), cached per host |
+
+Engine behavior is pinned by `tests/http-guard.test.ts` (43 unit tests, mocked DNS, zero network) and `tests/http-engine.test.ts` (40 integration tests against a loopback-only node:http server with explicitly approved `127.0.0.1` — the real guard/DNS/pinning pipeline runs without touching the real network). Security posture and explicit limitations: `docs/decisions.md` D18.
 
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (91 tests)
+npm test        # vitest (187 tests)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)
