@@ -29,7 +29,7 @@ Clean-room TypeScript encoding of the verified CloudStream provider contract (se
 | `src/core/schemas.ts` | Zod schemas for every provider-boundary payload (non-coercive, unknown keys stripped) |
 | `src/core/links.ts` | Link pipeline: URL dedupe (first wins), quality sort (desc, unknown last, stable), subtitle dedupe, streaming-emission collector |
 | `src/core/provider-host.ts` | The host: error boundary (typed `ProviderResult`, never throws for provider faults), per-method timeouts, timeout→`AbortSignal` cancellation with `TimeoutError` reason, boundary validation, caller cancellation |
-| `src/core/registry.ts` | `ProviderRegistry`: typed ordered registry — URL normalization (scheme/case/`www.`/trailing slashes, both sides), newest-wins prefix matching with a boundary check, conservative Levenshtein mirror-domain fallback (strict > 80), never-throwing lookups |
+| `src/core/registry.ts` | `ProviderRegistry`: typed ordered registry — URL normalization (scheme/case/`www.`/trailing slashes, both sides), newest-wins prefix + subdomain matching with a boundary check, structural (host-scoped) mirror-domain rule with informational Levenshtein score, never-throwing lookups (D17 hardening) |
 
 Host semantics pinned by tests (`tests/`, vitest, 91 tests): error isolation between requests, per-method timeouts, real AbortSignal cancellation (a bare race never claims cancellation), dedupe/sort determinism, safe validation failures, consistent link+subtitle emission, and registry matching (exact/prefix, newest-wins precedence, normalization, mirror fallback, malformed URLs, deterministic ambiguity resolution).
 

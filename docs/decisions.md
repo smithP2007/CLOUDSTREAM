@@ -237,6 +237,45 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
   The registry holds first-party `Provider` objects only — no `.cs3` loading, no dynamic code, no
   network I/O. Phase 3's extractor registry can reuse the same class for `Extractor`-style resolvers.
 
+## D17 — Registry hardening: host-scoped matching; structural mirror rule supersedes the score-gated fuzzy scan
+
+- **Status:** Adopted (security review of D16, implemented in `src/core/registry.ts`)
+- **Context:** D16 kept the documented upstream fuzzy fallback
+  (`Levenshtein.partialRatio(mainUrl, url) > 80` over the FULL normalized URL). Review found that any
+  URL containing a provider's `mainUrl` verbatim — in the path, the query, or a hostile subdomain
+  position such as `example.com.evil.io` — scores 100 and selects the provider. Host-only scoring
+  alone does not fix this (containment in a hostile suffix still scores 100), and no score threshold
+  can separate `example.net` (legitimate mirror, ratio 72.7) from `example.com.evil.io` (attacker,
+  100): the canonical upstream mirror example fails the upstream's own 80 gate, while the attack
+  passes it.
+- **Decision:** Matching in `getByUrl` is hardened to three checks inside the same newest-first scan
+  order (newest-registered wins preserved):
+  1. **Prefix** (unchanged): full normalized URL prefix + boundary character (end, `/`, `?`, `#`,
+     `:`).
+  2. **Subdomain** (new, explicit): the URL host equals the pattern host or is a label-boundary
+     subdomain of it (`www2.example.com` for pattern `example.com`), for path-less patterns only.
+     Safe by DNS delegation — only the pattern's operator can publish hosts under its own domain.
+     Upstream had this behavior only accidentally (fuzzy score 100).
+  3. **Mirror** (structural rule, replaces score-gated fuzzy): pattern host labels align to the TAIL
+     of the URL host's labels with every label except the final one (TLD) exactly equal and the
+     final label differing — `streamtape.to` ↔ `streamtape.com`, upstream's own comment example.
+     Path-bearing patterns match by prefix only (no host-mirror). The reported `score` remains a
+     Levenshtein partial ratio over hosts only, INFORMATIONAL — it does not gate. The
+     `MIRROR_MATCH_THRESHOLD` constant was removed.
+- **Divergences from upstream (deliberate, superseding D16.3):** host-scoped mirror/subdomain
+  checks; structural mirror rule instead of `partialRatio > 80`; subdomain matching made explicit
+  and deterministic; look-alike names (`examp1e.com`), domain-suffix attacks
+  (`example.com.evil.io`), hostnames in path/query, and userinfo tricks (`example.com@evil.io`) can
+  no longer select a provider. Upstream's naive `startsWith` + full-URL fuzzy accepted all of these.
+- **Consequences / residual risks (explicit):** (a) exact name+TLD swaps (`example.com` ↔
+  `example.click`) are indistinguishable from legitimate mirrors by URL structure alone — the
+  mirror rule still trusts them; mitigation is provider curation (D3 review) + the provider kill
+  switch, never registry logic. (b) Mirror matching does not use a public-suffix list — multi-label
+  suffixes (`co.uk`) are handled conservatively (tail-equality never matches, so `bbc.co.uk`-style
+  patterns only match exact/subdomain hosts). (c) Fuzzy typo-matching is GONE by design: a
+  typo-squatted domain that is not an exact name+TLD swap will not resolve — fail-safe direction.
+  Adversarial regressions for every vector above live in `tests/registry.test.ts`.
+
 ---
 
 ## Open future decisions (summary)

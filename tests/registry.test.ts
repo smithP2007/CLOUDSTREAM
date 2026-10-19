@@ -8,7 +8,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  MIRROR_MATCH_THRESHOLD,
   ProviderRegistry,
   levenshteinPartialRatio,
   levenshteinRatio,
@@ -114,18 +113,18 @@ describe('levenshteinPartialRatio (pure scoring)', () => {
       92.31,
       1,
     );
-    // example.net vs example.com: 3 substitutions → (22-6)/22 ≈ 72.7 → BELOW threshold
+    // example.net vs example.com: 3 substitutions → (22-6)/22 ≈ 72.7 — BELOW the
+    // upstream 80 score (D17: why score-gating cannot express mirror matching;
+    // the structural rule matches this pair instead).
     expect(levenshteinPartialRatio('example.net', 'example.com')).toBeCloseTo(72.73, 1);
-    expect(levenshteinPartialRatio('example.net', 'example.com')).toBeLessThan(
-      MIRROR_MATCH_THRESHOLD,
-    );
+    expect(levenshteinPartialRatio('example.net', 'example.com')).toBeLessThan(80);
   });
 
   it('returns 0 for an empty pattern and never matches unrelated domains above 80', () => {
     expect(levenshteinPartialRatio('', 'https://example.com/x')).toBe(0);
     expect(
       levenshteinPartialRatio('example.com', 'https://totally-different-site.org/video/123'),
-    ).toBeLessThan(MIRROR_MATCH_THRESHOLD);
+    ).toBeLessThan(80);
   });
 });
 
@@ -240,17 +239,20 @@ describe('ProviderRegistry.getByUrl — exact and prefix matches', () => {
     expect(urlMatch(result)).not.toBe(apex);
   });
 
-  it('verbatim mainUrl containment beyond the boundary resolves via the mirror stage', () => {
+  it('hardening (D17): verbatim mainUrl containment in a hostile suffix no longer matches', () => {
     const registry = new ProviderRegistry();
-    const cdn = reg(registry, 'cdn', 'https://cdn.example.com/vod');
-    // 'vodarchive' fails the prefix boundary ('a' directly after '…/vod') but
-    // contains the mainUrl verbatim, so the documented partial-ratio fallback
-    // scores it 100 — inherent to partialRatio containment, and upstream's
-    // overall end behavior too (see src/core/registry.ts module docs).
-    const result = registry.getByUrl('https://cdn.example.com/vodarchive/x');
-    expect(result?.method).toBe('mirror');
-    if (result?.method === 'mirror') expect(result.score).toBe(100);
-    expect(urlMatch(result)).toBe(cdn);
+    reg(registry, 'site', 'https://example.com');
+    // Old behavior: mirror fallback scored this 100 (mainUrl verbatim inside
+    // the hostile suffix). Hardened: mirror checks are host-scoped + structural.
+    expect(registry.getByUrl('https://example.com.evil.io/watch')).toBeNull();
+  });
+
+  it('hardening (D17): path-bearing mainUrl does not match beyond its boundary', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'cdn', 'https://cdn.example.com/vod');
+    // Old behavior: mirror fallback scored '…/vodarchive/x' 100 (verbatim host
+    // + path containment). Hardened: path-bearing patterns match by prefix only.
+    expect(registry.getByUrl('https://cdn.example.com/vodarchive/x')).toBeNull();
   });
 });
 
@@ -329,17 +331,35 @@ describe('ProviderRegistry.getByUrl — normalization', () => {
   });
 });
 
-describe('ProviderRegistry.getByUrl — mirror-domain fallback', () => {
-  it('falls back to a mirror domain only when no prefix matched', () => {
+describe('ProviderRegistry.getByUrl — mirror-domain fallback (structural rule, D17)', () => {
+  it('matches a mirror domain only when no prefix/subdomain matched', () => {
     const registry = new ProviderRegistry();
     const provider = reg(registry, 'streamtape', 'https://streamtape.to');
     const result = registry.getByUrl('https://streamtape.com/watch?v=abc');
     expect(result?.method).toBe('mirror');
     expect(urlMatch(result)).toBe(provider);
     if (result?.method === 'mirror') {
-      expect(result.score).toBeGreaterThan(MIRROR_MATCH_THRESHOLD);
-      expect(result.score).toBeCloseTo(92.31, 1);
+      expect(result.score).toBeCloseTo(92.31, 1); // informational host-only ratio
     }
+  });
+
+  it('the canonical mirror case (same name, different TLD) matches structurally', () => {
+    const registry = new ProviderRegistry();
+    const provider = reg(registry, 'site', 'https://example.com');
+    // Upstream's own comment example ("example.com, example.net") — 72.7 score,
+    // which is WHY the old >80 score gate could not express mirror matching.
+    const result = registry.getByUrl('https://example.net/watch');
+    expect(result?.method).toBe('mirror');
+    expect(urlMatch(result)).toBe(provider);
+    if (result?.method === 'mirror') expect(result.score).toBeCloseTo(72.73, 1);
+  });
+
+  it('mirrors with extra leading labels match (cdn.streamtape.net ↔ streamtape.com)', () => {
+    const registry = new ProviderRegistry();
+    const provider = reg(registry, 'streamtape', 'https://streamtape.com');
+    const result = registry.getByUrl('https://cdn.streamtape.net/v/1');
+    expect(result?.method).toBe('mirror');
+    expect(urlMatch(result)).toBe(provider);
   });
 
   it('a URL on a registered domain resolves as prefix even when it could mirror-match', () => {
@@ -351,18 +371,19 @@ describe('ProviderRegistry.getByUrl — mirror-domain fallback', () => {
     expect(urlMatch(result)).toBe(real);
   });
 
-  it('near-mirror domains below the strict > 80 threshold never match', () => {
+  it('multi-label public-suffix shapes cannot mirror-match on tail equality alone', () => {
     const registry = new ProviderRegistry();
-    reg(registry, 'site', 'https://example.com');
-    // .net vs .com differs by 3 chars → ≈72.7 < 80
-    expect(registry.getByUrl('https://example.net/watch')).toBeNull();
+    reg(registry, 'bbc', 'https://bbc.co.uk');
+    // tail [co, uk] equals the pattern → last label does NOT differ → no mirror.
+    expect(registry.getByUrl('https://something.co.uk/watch')).toBeNull();
+    // …but a real subdomain of the pattern still matches deterministically.
+    expect(registry.getByUrl('https://x.bbc.co.uk/watch')?.method).toBe('subdomain');
   });
 
-  it('ambiguous mirrors: newest-first scan wins even with a lower score (deterministic)', () => {
+  it('ambiguous mirrors: newest-first scan wins among structural mirrors (deterministic)', () => {
     const registry = new ProviderRegistry();
-    // "streamtape.to" scores ≈92.3 against the URL; "streamtape.mu" ≈84.6.
-    reg(registry, 'old-high-score', 'https://streamtape.to');
-    const newest = reg(registry, 'new-low-score', 'https://streamtape.mu');
+    reg(registry, 'old', 'https://streamtape.to');
+    const newest = reg(registry, 'new', 'https://streamtape.mu');
 
     const first = registry.getByUrl('https://streamtape.com/watch?v=abc');
     expect(first?.method).toBe('mirror');
@@ -372,15 +393,13 @@ describe('ProviderRegistry.getByUrl — mirror-domain fallback', () => {
     // Determinism: identical inputs give the identical winner every time.
     for (let i = 0; i < 10; i++) {
       const again = registry.getByUrl('https://streamtape.com/watch?v=abc');
-      expect(again?.method).toBe('mirror');
       expect(urlMatch(again)).toBe(newest);
-      if (again?.method === 'mirror') expect(again.score).toBeCloseTo(84.62, 1);
     }
 
     // Removing the newest hands the match to the older provider.
     registry.unregister(newest);
     expect(urlMatch(registry.getByUrl('https://streamtape.com/watch?v=abc'))).toBe(
-      registry.getByName('old-high-score'),
+      registry.getByName('old'),
     );
   });
 
@@ -393,7 +412,91 @@ describe('ProviderRegistry.getByUrl — mirror-domain fallback', () => {
       normalizeProviderUrl('https://example.net/watch'),
     );
     expect(normalized).toBeLessThanOrEqual(raw);
-    expect(normalized).toBeLessThan(MIRROR_MATCH_THRESHOLD);
+  });
+});
+
+describe('ProviderRegistry.getByUrl — adversarial matching (D17 hardening)', () => {
+  it('domain-suffix attacks cannot select the provider', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'site', 'https://example.com');
+    expect(registry.getByUrl('https://example.com.evil.io/watch')).toBeNull();
+    expect(registry.getByUrl('https://example.com.evil.org/x')).toBeNull();
+    expect(registry.getByUrl('https://example.com.bad-actor.net/a/b/c')).toBeNull();
+  });
+
+  it('the domain the suffix belongs to still attributes correctly', () => {
+    const registry = new ProviderRegistry();
+    const evil = reg(registry, 'evil', 'https://evil.io');
+    // The hostile host is evil.io's OWN subdomain — it must resolve to evil.io.
+    expect(urlMatch(registry.getByUrl('https://example.com.evil.io/watch'))).toBe(evil);
+  });
+
+  it('look-alike domain names cannot select the provider', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'site', 'https://example.com');
+    expect(registry.getByUrl('https://examp1e.com/watch')).toBeNull(); // digit look-alike
+    expect(registry.getByUrl('https://example-cdn.com/watch')).toBeNull(); // name+suffix
+    expect(registry.getByUrl('https://xexample.com/watch')).toBeNull();
+    expect(registry.getByUrl('https://theexample.com/watch')).toBeNull();
+  });
+
+  it('hostnames appearing only in the path or query cannot select a provider', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'site', 'https://example.com');
+    expect(registry.getByUrl('https://evil.test/example.com/watch')).toBeNull();
+    expect(registry.getByUrl('https://evil.test/?next=https://example.com/x')).toBeNull();
+    expect(registry.getByUrl('https://evil.test/a/b/example.com')).toBeNull();
+    expect(registry.getByUrl('https://evil.test#example.com')).toBeNull();
+    expect(registry.getByUrl('https://evil.example.test?u=example.com')).toBeNull();
+  });
+
+  it('valid subdomains of the pattern host match deterministically', () => {
+    const registry = new ProviderRegistry();
+    const provider = reg(registry, 'site', 'https://example.com');
+    expect(registry.getByUrl('https://www2.example.com/watch')?.method).toBe('subdomain');
+    expect(registry.getByUrl('https://a.b.example.com/watch')?.method).toBe('subdomain');
+    expect(urlMatch(registry.getByUrl('https://deep.sub.example.com/watch'))).toBe(provider);
+  });
+
+  it('subdomain matching is newest-wins', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'old', 'https://example.com');
+    const newest = reg(registry, 'newer', 'https://example.com');
+    expect(urlMatch(registry.getByUrl('https://www2.example.com/watch'))).toBe(newest);
+  });
+
+  it('subdomains of a path-bearing pattern do not match (conservative)', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'cdn', 'https://cdn.example.com/vod');
+    expect(registry.getByUrl('https://x.cdn.example.com/vod/item')).toBeNull();
+  });
+
+  it('userinfo tricks cannot select a provider', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'site', 'https://example.com');
+    expect(registry.getByUrl('https://example.com@evil.io/watch')).toBeNull();
+    expect(registry.getByUrl('https://example.com%2F@evil.io/watch')).toBeNull();
+  });
+
+  it('ports are stripped before host-scoped mirror matching', () => {
+    const registry = new ProviderRegistry();
+    const provider = reg(registry, 'mirror', 'https://streamtape.to');
+    const result = registry.getByUrl('https://streamtape.com:8443/watch');
+    expect(result?.method).toBe('mirror');
+    expect(urlMatch(result)).toBe(provider);
+  });
+
+  it('malformed hosts never throw and never match', () => {
+    const registry = new ProviderRegistry();
+    reg(registry, 'site', 'https://example.com');
+    expect(registry.getByUrl('http://[')).toBeNull();
+    expect(registry.getByUrl('http://[::1')).toBeNull();
+    expect(registry.getByUrl('http://..')).toBeNull();
+    expect(registry.getByUrl('http://.example.com')).toBeNull();
+    expect(registry.getByUrl('http://exa mple.com/watch')).toBeNull();
+    expect(registry.getByUrl('http://exa_mple.com/watch')).toBeNull();
+    expect(registry.getByUrl('https://[::1]/watch')).toBeNull(); // IPv6 host vs domain patterns
+    expect(registry.getByUrl('https://[fe80::1]/watch')).toBeNull();
   });
 });
 
