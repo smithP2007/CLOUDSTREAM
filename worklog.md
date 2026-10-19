@@ -84,3 +84,21 @@ Work Log:
 Stage Summary:
 - Phase 2 steps 1-2 complete: HttpEngine + GuardedDnsResolver + guard + cookies + headers + cache + robots, all behavior pinned by tests. SSRF posture: fail-closed everywhere, single validated-DNS source of truth shared by validation and connection, explicit approvals for operator LAN hosts.
 - Exact next task: Phase 2 steps 3-5 — HTML/JSON toolkit (cheerio/p.a.c.k.e/vm sandbox), link pipeline TTL cache (reuse core/links + TtlCache), observability (redacted event logging, health shape, provider kill-switch flag). Then Phase 3 review gate before any real provider.
+
+---
+Task ID: 5
+Agent: main (Z.ai)
+Task: Push ALL project work to https://github.com/smithP2007/CLOUDSTREAM so a future AI session can continue from the repo alone.
+
+Work Log:
+- Verified green before push: vitest 187/187, tsc --noEmit clean, eslint clean, build clean (all run live).
+- Discovered workspace git root is /home/z/my-project (monorepo) whose history contains research/ (49MB upstream clones incl. closed-source AniKoto artifacts), .env (DATABASE_URL secret), tool-results/ — none of these may be redistributed.
+- Wrote handoff materials into the project: HANDOFF.md (AI continuation guide: rules, reading order, state, exact next task = Phase 2 steps 3-5, D17/D18 gotchas, worklog protocol), docs/worklog.md (full worklog copy + SHA note), .gitignore (node_modules/.env protection).
+- Committed 6077e12 in workspace repo, then `git subtree split -P download/cloudstream-web -b github-export` → clean 6-commit history with project at root (no upstream code, no secrets).
+- Pushed github-export → main on github.com/smithP2007/CLOUDSTREAM using the user's PAT inline (not stored in git config); verified ls-remote main = 822f52e (handoff tip).
+- Secret-scanned pushed history: no PAT, no DATABASE_URL. Added remote `cloudstream` (clean URL) for future pushes: `git push cloudstream github-export:main` after re-splitting.
+
+Stage Summary:
+- GitHub repo smithP2007/CLOUDSTREAM main = 822f52e, 104 files, full readable history (Phase 1, Task A/D17, Task B/D18, handoff).
+- Excluded by policy: research/ clones, AniKoto binary, .env, tool-results/.
+- Next AI entry point: HANDOFF.md → POLICY.md → docs/decisions.md (D1-D18) → roadmap (Phase 2 steps 3-5: HTML/JSON toolkit, link pipeline, observability) → Phase 3 review gate requires user approval.
