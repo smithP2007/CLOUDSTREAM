@@ -1,0 +1,2002 @@
+     1→@file:Suppress(
+     2→    "UNUSED",
+     3→    "UnusedReceiverParameter",
+     4→    "MemberVisibilityCanBePrivate"
+     5→)
+     6→
+     7→package com.lagradost.cloudstream3
+     8→
+     9→import com.fasterxml.jackson.annotation.JsonAutoDetect
+    10→import com.fasterxml.jackson.annotation.JsonProperty
+    11→import com.fasterxml.jackson.databind.DeserializationFeature
+    12→import com.fasterxml.jackson.databind.json.JsonMapper
+    13→import com.fasterxml.jackson.module.kotlin.kotlinModule
+    14→import com.lagradost.cloudstream3.mvvm.logError
+    15→import com.lagradost.cloudstream3.mvvm.safe
+    16→import com.lagradost.cloudstream3.syncproviders.SyncIdName
+    17→import com.lagradost.cloudstream3.utils.*
+    18→import com.lagradost.cloudstream3.utils.AppUtils.toJson
+    19→import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+    20→import com.lagradost.cloudstream3.utils.Coroutines.atomicListOf
+    21→import com.lagradost.cloudstream3.utils.Coroutines.mainWork
+    22→import com.lagradost.cloudstream3.utils.SubtitleHelper.fromCodeToLangTagIETF
+    23→import com.lagradost.cloudstream3.utils.SubtitleHelper.fromLanguageToTagIETF
+    24→import com.lagradost.nicehttp.RequestBodyTypes
+    25→import io.ktor.http.Url
+    26→import io.ktor.http.URLBuilder
+    27→import io.ktor.http.encodedPath
+    28→import io.ktor.http.takeFrom
+    29→import okhttp3.Interceptor
+    30→import okhttp3.MediaType.Companion.toMediaTypeOrNull
+    31→import okhttp3.RequestBody.Companion.toRequestBody
+    32→import kotlinx.datetime.LocalDate
+    33→import kotlinx.datetime.LocalTime
+    34→import kotlinx.datetime.TimeZone
+    35→import kotlinx.datetime.atStartOfDayIn
+    36→import kotlinx.datetime.format.DateTimeComponents
+    37→import kotlinx.datetime.format.FormatStringsInDatetimeFormats
+    38→import kotlinx.datetime.format.byUnicodePattern
+    39→import kotlinx.datetime.format.char
+    40→import kotlinx.datetime.format.parse
+    41→import kotlinx.datetime.toInstant
+    42→import kotlinx.serialization.SerialName
+    43→import kotlinx.serialization.Serializable
+    44→import kotlinx.serialization.json.Json
+    45→import kotlin.io.encoding.Base64
+    46→import kotlin.jvm.JvmName
+    47→import kotlin.math.absoluteValue
+    48→import kotlin.math.roundToInt
+    49→import kotlin.time.Clock
+    50→import kotlin.time.Instant
+    51→
+    52→/**
+    53→ * API available only on prerelease builds.
+    54→ * Using it will cause stable to crash with `NoSuchMethodException`.
+    55→ */
+    56→@MustBeDocumented
+    57→@Retention(AnnotationRetention.BINARY) // This is only an IDE hint, and will not be used in the runtime
+    58→@RequiresOptIn(
+    59→    message = "This API is only available on prerelease builds. " +
+    60→              "Using it will cause CloudStream stable to crash.",
+    61→    level = RequiresOptIn.Level.ERROR
+    62→)
+    63→annotation class Prerelease
+    64→
+    65→@Retention(AnnotationRetention.BINARY) // This is only an IDE hint, and will not be used in the runtime
+    66→@RequiresOptIn(
+    67→    message = "This API is marked as internal and should not be used by extensions. " +
+    68→              "Using it could cause catastrophic build or runtime errors and may " +
+    69→              "be changed or removed at any time.",
+    70→    level = RequiresOptIn.Level.ERROR
+    71→)
+    72→annotation class InternalAPI
+    73→
+    74→@Retention(AnnotationRetention.BINARY) // This is only an IDE hint, and will not be used in the runtime
+    75→@RequiresOptIn(
+    76→    message = "Only use this if you know what you are doing and you need to bypass the SSL certificate checks. Never use this for sensitive network requests such as logins.",
+    77→    level = RequiresOptIn.Level.WARNING
+    78→)
+    79→annotation class UnsafeSSL
+    80→
+    81→/** Temporary; will be removed when the Jackson -> Kotlinx serialization migration is completed. */
+    82→@InternalAPI
+    83→@Target(AnnotationTarget.CLASS)
+    84→@Retention(AnnotationRetention.RUNTIME)
+    85→annotation class SkipSerializationTest
+    86→
+    87→/**
+    88→ * Defines the constant for the all languages preference, if this is set then it is
+    89→ * the equivalent of all languages being set
+    90→ */
+    91→const val AllLanguagesName = "universal"
+    92→
+    93→const val USER_AGENT =
+    94→    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+    95→
+    96→class ErrorLoadingException(message: String? = null) : Exception(message)
+    97→
+    98→//val baseHeader = mapOf("User-Agent" to USER_AGENT)
+    99→
+   100→val json = Json {
+   101→    encodeDefaults = true
+   102→    explicitNulls = false
+   103→    ignoreUnknownKeys = true
+   104→}
+   105→
+   106→val mapper = JsonMapper.builder().addModule(kotlinModule())
+   107→    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false).build()!!
+   108→
+   109→object APIHolder {
+   110→    val unixTimeMS: Long
+   111→        get() = Clock.System.now().toEpochMilliseconds()
+   112→    val unixTime: Long
+   113→        get() = unixTimeMS / 1000L
+   114→
+   115→    val allProviders = atomicListOf<MainAPI>()
+   116→
+   117→    fun initAll() {
+   118→        allProviders.withLock {
+   119→            for (api in allProviders) {
+   120→                api.init()
+   121→            }
+   122→        }
+   123→        apiMap = null
+   124→    }
+   125→
+   126→    /** String extension function to Capitalize first char of string.*/
+   127→    fun String.capitalize(): String {
+   128→        return this.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+   129→    }
+   130→
+   131→    var apis: AtomicList<MainAPI> = atomicListOf()
+   132→    var apiMap: Map<String, Int>? = null
+   133→
+   134→    fun addPluginMapping(plugin: MainAPI) {
+   135→        apis.withLock {
+   136→            apis = apis + plugin
+   137→        }
+   138→        initMap(true)
+   139→    }
+   140→
+   141→    fun removePluginMapping(plugin: MainAPI) {
+   142→        apis.withLock {
+   143→            apis = apis.filter { it != plugin }
+   144→        }
+   145→        initMap(true)
+   146→    }
+   147→
+   148→    private fun initMap(forcedUpdate: Boolean = false) {
+   149→        apis.withLock {
+   150→            if (apiMap == null || forcedUpdate)
+   151→                apiMap = apis.mapIndexed { index, api -> api.name to index }.toMap()
+   152→        }
+   153→    }
+   154→
+   155→    fun getApiFromNameNull(apiName: String?): MainAPI? {
+   156→        if (apiName == null) return null
+   157→        return allProviders.withLock {
+   158→            initMap()
+   159→            apis.withLock {
+   160→                apiMap?.get(apiName)?.let { apis.getOrNull(it) }
+   161→                // Leave the ?. null check, it can crash regardless
+   162→                ?: allProviders.firstOrNull { it.name == apiName }
+   163→            }
+   164→        }
+   165→    }
+   166→
+   167→    fun getApiFromUrlNull(url: String?): MainAPI? {
+   168→        if (url == null) return null
+   169→        return allProviders.withLock {
+   170→            allProviders.firstOrNull { url.startsWith(it.mainUrl) }
+   171→        }
+   172→    }
+   173→
+   174→    /**
+   175→     * Gets the website captcha token
+   176→     * discovered originally by https://github.com/ahmedgamal17
+   177→     * optimized by https://github.com/justfoolingaround
+   178→     *
+   179→     * @param url the main url, likely the same website you found the key from.
+   180→     * @param key used to fill https://www.google.com/recaptcha/api.js?render=....
+   181→     *
+   182→     * @param referer the referer for the google.com/recaptcha/api.js... request, optional.
+   183→     * */
+   184→
+   185→    // Try document.select("script[src*=https://www.google.com/recaptcha/api.js?render=]").attr("src").substringAfter("render=")
+   186→    // To get the key
+   187→    suspend fun getCaptchaToken(url: String, key: String, referer: String? = null): String? {
+   188→        try {
+   189→            val _url = Url(url)
+   190→            val domain = base64Encode(
+   191→                (_url.protocol.name + "://" + _url.host + ":443").encodeToByteArray(),
+   192→            ).replace("\n", "").replace("=", ".")
+   193→
+   194→            val vToken =
+   195→                app.get(
+   196→                    "https://www.google.com/recaptcha/api.js?render=$key",
+   197→                    referer = referer,
+   198→                    cacheTime = 0
+   199→                )
+   200→                    .text
+   201→                    .substringAfter("releases/")
+   202→                    .substringBefore("/")
+   203→            val recapToken =
+   204→                app.get("https://www.google.com/recaptcha/api2/anchor?ar=1&hl=en&size=invisible&cb=cs3&k=$key&co=$domain&v=$vToken")
+   205→                    .document
+   206→                    .selectFirst("#recaptcha-token")?.attr("value")
+   207→            if (recapToken != null) {
+   208→                return app.post(
+   209→                    "https://www.google.com/recaptcha/api2/reload?k=$key",
+   210→                    data = mapOf(
+   211→                        "v" to vToken,
+   212→                        "k" to key,
+   213→                        "c" to recapToken,
+   214→                        "co" to domain,
+   215→                        "sa" to "",
+   216→                        "reason" to "q"
+   217→                    ), cacheTime = 0
+   218→                ).text
+   219→                    .substringAfter("rresp\",\"")
+   220→                    .substringBefore("\"")
+   221→            }
+   222→        } catch (e: Exception) {
+   223→            logError(e)
+   224→        }
+   225→        return null
+   226→    }
+   227→
+   228→    private var trackerCache: HashMap<String, AniSearch> = hashMapOf()
+   229→
+   230→    /** backwards compatibility, use getTracker4 instead */
+   231→    suspend fun getTracker(
+   232→        titles: List<String>,
+   233→        types: Set<TrackerType>?,
+   234→        year: Int?,
+   235→    ): Tracker? = getTracker(titles, types, year, false)
+   236→
+   237→    /**
+   238→     * Get anime tracker information based on title, year and type.
+   239→     * Both titles are attempted to be matched with both Romaji and English title.
+   240→     * Uses the anilist api.
+   241→     *
+   242→     * @param titles uses first index to search, but if you have multiple titles and want extra guarantee to match you can also have that
+   243→     * @param types Optional parameter to narrow down the scope to Movies, TV, etc. See TrackerType.getTypes()
+   244→     * @param year Optional parameter to only get anime with a specific year
+   245→     **/
+   246→    suspend fun getTracker(
+   247→        titles: List<String>,
+   248→        types: Set<TrackerType>?,
+   249→        year: Int?,
+   250→        lessAccurate: Boolean
+   251→    ): Tracker? {
+   252→        return try {
+   253→            require(titles.isNotEmpty()) { "titles must no be empty when calling getTracker" }
+   254→
+   255→            val mainTitle = titles[0]
+   256→            val search =
+   257→                trackerCache[mainTitle]
+   258→                    ?: searchAnilist(mainTitle)?.also {
+   259→                        trackerCache[mainTitle] = it
+   260→                    } ?: return null
+   261→
+   262→            val res = search.data?.page?.media?.find { media ->
+   263→                val matchingYears = year == null || media.seasonYear == year
+   264→                val matchingTitles = media.title?.let { title ->
+   265→                    titles.any { userTitle ->
+   266→                        title.isMatchingTitles(userTitle)
+   267→                    }
+   268→                } ?: false
+   269→
+   270→                val matchingTypes = types?.any { it.name.equals(media.format, true) } == true
+   271→                if (lessAccurate) matchingTitles || matchingTypes && matchingYears else matchingTitles && matchingTypes && matchingYears
+   272→            } ?: return null
+   273→
+   274→            Tracker(
+   275→                res.idMal,
+   276→                null,
+   277→                res.id.toString(),
+   278→                res.coverImage?.extraLarge ?: res.coverImage?.large,
+   279→                res.bannerImage
+   280→            )
+   281→        } catch (t: Throwable) {
+   282→            logError(t)
+   283→            null
+   284→        }
+   285→    }
+   286→
+   287→    /** Searches Anilist using title.
+   288→     * @param title Title string of the show
+   289→     * @return [AniSearch] data class holds search info.
+   290→     * */
+   291→    private suspend fun searchAnilist(
+   292→        title: String?,
+   293→    ): AniSearch? {
+   294→        val query = """
+   295→        query (
+   296→          ${'$'}page: Int = 1
+   297→          ${'$'}search: String
+   298→          ${'$'}sort: [MediaSort] = [POPULARITY_DESC, SCORE_DESC]
+   299→          ${'$'}type: MediaType
+   300→        ) {
+   301→          Page(page: ${'$'}page, perPage: 20) {
+   302→            media(
+   303→              search: ${'$'}search
+   304→              sort: ${'$'}sort
+   305→              type: ${'$'}type
+   306→            ) {
+   307→              id
+   308→              idMal
+   309→              title { romaji english }
+   310→              coverImage { extraLarge large }
+   311→              bannerImage
+   312→              seasonYear
+   313→              format
+   314→            }
+   315→          }
+   316→        }
+   317→    """.trimIndent().trim()
+   318→
+   319→        val data = mapOf(
+   320→            "query" to query,
+   321→            "variables" to mapOf(
+   322→                "search" to title,
+   323→                "sort" to "SEARCH_MATCH",
+   324→                "type" to "ANIME",
+   325→            )
+   326→        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+   327→
+   328→        return app.post("https://graphql.anilist.co", requestBody = data)
+   329→            .parsedSafe<AniSearch>()
+   330→    }
+   331→}
+   332→
+   333→/*
+   334→// THIS IS WORK IN PROGRESS API
+   335→interface ITag {
+   336→    val name: UiText
+   337→}
+   338→
+   339→data class SimpleTag(override val name: UiText, val data: String) : ITag
+   340→
+   341→enum class SelectType {
+   342→    SingleSelect,
+   343→    MultiSelect,
+   344→    MultiSelectAndExclude,
+   345→}
+   346→
+   347→enum class SelectValue {
+   348→    Selected,
+   349→    Excluded,
+   350→}
+   351→
+   352→interface GenreSelector {
+   353→    val title: UiText
+   354→    val id : Int
+   355→}
+   356→
+   357→data class TagSelector(
+   358→    override val title: UiText,
+   359→    override val id : Int,
+   360→    val tags: Set<ITag>,
+   361→    val defaultTags : Set<ITag> = setOf(),
+   362→    val selectType: SelectType = SelectType.SingleSelect,
+   363→) : GenreSelector
+   364→
+   365→data class BoolSelector(
+   366→    override val title: UiText,
+   367→    override val id : Int,
+   368→
+   369→    val defaultValue : Boolean = false,
+   370→) : GenreSelector
+   371→
+   372→data class InputField(
+   373→    override val title: UiText,
+   374→    override val id : Int,
+   375→
+   376→    val hint : UiText? = null,
+   377→) : GenreSelector
+   378→
+   379→// This response describes how a user might filter the homepage or search results
+   380→data class GenreResponse(
+   381→    val searchSelectors : List<GenreSelector>,
+   382→    val filterSelectors: List<GenreSelector> = searchSelectors
+   383→) */
+   384→
+   385→/*
+   386→0 = Site not good
+   387→1 = All good
+   388→2 = Slow, heavy traffic
+   389→3 = restricted, must donate 30 benenes to use
+   390→ */
+   391→const val PROVIDER_STATUS_KEY = "PROVIDER_STATUS_KEY"
+   392→const val PROVIDER_STATUS_BETA_ONLY = 3
+   393→const val PROVIDER_STATUS_SLOW = 2
+   394→const val PROVIDER_STATUS_OK = 1
+   395→const val PROVIDER_STATUS_DOWN = 0
+   396→
+   397→@Serializable
+   398→data class ProvidersInfoJson(
+   399→    @JsonProperty("name") @SerialName("name") var name: String,
+   400→    @JsonProperty("url") @SerialName("url") var url: String,
+   401→    @JsonProperty("credentials") @SerialName("credentials") var credentials: String? = null,
+   402→    @JsonProperty("status") @SerialName("status") var status: Int,
+   403→)
+   404→
+   405→@Serializable
+   406→data class SettingsJson(
+   407→    @JsonProperty("enableAdult") @SerialName("enableAdult") var enableAdult: Boolean = false,
+   408→)
+   409→
+   410→data class MainPageData(
+   411→    val name: String,
+   412→    val data: String,
+   413→    val horizontalImages: Boolean = false
+   414→)
+   415→
+   416→data class MainPageRequest(
+   417→    val name: String,
+   418→    val data: String,
+   419→    val horizontalImages: Boolean,
+   420→    //TODO genre selection or smth
+   421→)
+   422→
+   423→/** Create [MainPageData] from url, name Strings & layout (Horizontal/Vertical) Boolean.
+   424→ * @param url page Url string.
+   425→ * @param name page Name string.
+   426→ * @param horizontalImages Boolean to control item card layout.
+   427→ * */
+   428→fun mainPage(url: String, name: String, horizontalImages: Boolean = false): MainPageData {
+   429→    return MainPageData(name = name, data = url, horizontalImages = horizontalImages)
+   430→}
+   431→
+   432→/** return list of MainPageData with url to name, make for more readable code
+   433→ * @param elements parameter of [MainPageData] class of data*/
+   434→fun mainPageOf(vararg elements: MainPageData): List<MainPageData> {
+   435→    return elements.toList()
+   436→}
+   437→
+   438→/** return list of MainPageData with url to name, make for more readable code
+   439→ * @param elements parameter of <String, String> map of url and name */
+   440→fun mainPageOf(vararg elements: Pair<String, String>): List<MainPageData> {
+   441→    return elements.map { (url, name) -> MainPageData(name = name, data = url) }
+   442→}
+   443→
+   444→fun newHomePageResponse(
+   445→    name: String,
+   446→    list: List<SearchResponse>,
+   447→    hasNext: Boolean? = null,
+   448→): HomePageResponse {
+   449→    @Suppress("DEPRECATION_ERROR")
+   450→    return HomePageResponse(
+   451→        listOf(HomePageList(name, list)),
+   452→        hasNext = hasNext ?: list.isNotEmpty()
+   453→    )
+   454→}
+   455→
+   456→fun newHomePageResponse(
+   457→    data: MainPageRequest,
+   458→    list: List<SearchResponse>,
+   459→    hasNext: Boolean? = null,
+   460→): HomePageResponse {
+   461→    @Suppress("DEPRECATION_ERROR")
+   462→    return HomePageResponse(
+   463→        listOf(HomePageList(data.name, list, data.horizontalImages)),
+   464→        hasNext = hasNext ?: list.isNotEmpty()
+   465→    )
+   466→}
+   467→
+   468→fun newHomePageResponse(list: HomePageList, hasNext: Boolean? = null): HomePageResponse {
+   469→    @Suppress("DEPRECATION_ERROR")
+   470→    return HomePageResponse(listOf(list), hasNext = hasNext ?: list.list.isNotEmpty())
+   471→}
+   472→
+   473→fun newHomePageResponse(list: List<HomePageList>, hasNext: Boolean? = null): HomePageResponse {
+   474→    @Suppress("DEPRECATION_ERROR")
+   475→    return HomePageResponse(list, hasNext = hasNext ?: list.any { it.list.isNotEmpty() })
+   476→}
+   477→
+   478→fun newSearchResponseList(
+   479→    list: List<SearchResponse>,
+   480→    hasNext: Boolean? = null,
+   481→): SearchResponseList {
+   482→    @Suppress("DEPRECATION_ERROR")
+   483→    return SearchResponseList(
+   484→        list,
+   485→        hasNext = hasNext ?: list.isNotEmpty()
+   486→    )
+   487→}
+   488→
+   489→fun List<SearchResponse>.toNewSearchResponseList(hasNext: Boolean? = null) : SearchResponseList {
+   490→    return newSearchResponseList(this, hasNext)
+   491→}
+   492→
+   493→/**Every provider will **not** have try catch built in, so handle exceptions when calling these functions*/
+   494→abstract class MainAPI {
+   495→    companion object {
+   496→        var overrideData: HashMap<String, ProvidersInfoJson>? = null
+   497→        var settingsForProvider: SettingsJson = SettingsJson()
+   498→    }
+   499→
+   500→    fun init() {
+   501→        overrideData?.get(this::class.simpleName)?.let { data ->
+   502→            overrideWithNewData(data)
+   503→        }
+   504→    }
+   505→
+   506→    fun overrideWithNewData(data: ProvidersInfoJson) {
+   507→        if (!canBeOverridden) return
+   508→        this.name = data.name
+   509→        if (data.url.isNotBlank() && data.url != "NONE")
+   510→            this.mainUrl = data.url
+   511→        this.storedCredentials = data.credentials
+   512→    }
+   513→
+   514→    /** Name of the plugin that will used in UI */
+   515→    open var name = "NONE"
+   516→
+   517→    /** Main Url of the plugin that can be used directly in code or to be replaced using Clone site feature in settings */
+   518→    open var mainUrl = "NONE"
+   519→    open var storedCredentials: String? = null
+   520→    open var canBeOverridden: Boolean = true
+   521→
+   522→    /** if this is turned on then it will request the homepage one after the other,
+   523→    used to delay if they block many request at the same time*/
+   524→    open var sequentialMainPage: Boolean = false
+   525→
+   526→    /** in milliseconds, this can be used to add more delay between homepage requests
+   527→     *  on first load if sequentialMainPage is turned on */
+   528→    open var sequentialMainPageDelay: Long = 0L
+   529→
+   530→    /** in milliseconds, this can be used to add more delay between homepage requests when scrolling */
+   531→    open var sequentialMainPageScrollDelay: Long = 0L
+   532→
+   533→    /** used to keep track when last homepage request was in unixtime ms */
+   534→    var lastHomepageRequest: Long = 0L
+   535→
+   536→    /**
+   537→     * The language as an IETF BCP 47 conformant tag.
+   538→     * Check [com.lagradost.cloudstream3.utils.SubtitleHelper].
+   539→     *
+   540→     * See locales on:
+   541→     * https://github.com/unicode-org/cldr-json/blob/main/cldr-json/cldr-core/availableLocales.json
+   542→     * https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry
+   543→     * https://android.googlesource.com/platform/frameworks/base/+/android-16.0.0_r2/core/res/res/values/locale_config.xml
+   544→     * https://iso639-3.sil.org/code_tables/639/data/all
+   545→    */
+   546→    open var lang = "en"
+   547→
+   548→    /**If link is stored in the "data" string, so links can be instantly loaded*/
+   549→    open val instantLinkLoading = false
+   550→
+   551→    /**Set false if links require referer or for some reason cant be played on a chromecast*/
+   552→    open val hasChromecastSupport = true
+   553→
+   554→    /**If all links are encrypted then set this to false*/
+   555→    open val hasDownloadSupport = true
+   556→
+   557→    /**Used for testing and can be used to disable the providers if WebView is not available*/
+   558→    open val usesWebView = false
+   559→
+   560→    /** Determines which plugin a given provider is from. This is the full path to the plugin. */
+   561→    var sourcePlugin: String? = null
+   562→
+   563→    open val hasMainPage = false
+   564→    open val hasQuickSearch = false
+   565→
+   566→    /**
+   567→     * The timeout on the `loadLinks` functions in milliseconds,
+   568→     * By default this should be around a few minutes to prevent any unexpected recursive call/extraction to drain resources,
+   569→     * however if you need very long extraction times, you can can request it by changing this variable.
+   570→     *
+   571→     * Note that this is only a hint, and may not get respected if you request something too long.
+   572→     * */
+   573→    open val loadLinksTimeoutMs: Long? = null
+   574→
+   575→    /**
+   576→     * The timeout on the `getMainPage` functions in milliseconds.
+   577→     *
+   578→     * Note that this is only a hint, and may not get respected if you request something too long.
+   579→     * */
+   580→    open val getMainPageTimeoutMs: Long? = null
+   581→
+   582→    /**
+   583→     * The timeout on the `search` functions in milliseconds.
+   584→     *
+   585→     * Note that this is only a hint, and may not get respected if you request something too long.
+   586→     * */
+   587→    open val searchTimeoutMs: Long? = null
+   588→
+   589→    /**
+   590→     * The timeout on the `quickSearch` functions in milliseconds.
+   591→     *
+   592→     * Note that this is only a hint, and may not get respected if you request something too long.
+   593→     * */
+   594→    open val quickSearchTimeoutMs: Long? = null
+   595→
+   596→    /**
+   597→     * The timeout on the `loadSearch` functions in milliseconds.
+   598→     *
+   599→     * Note that this is only a hint, and may not get respected if you request something too long.
+   600→     * */
+   601→    open val loadTimeoutMs: Long? = null
+   602→
+   603→
+   604→    /**
+   605→     * A set of which ids the provider can open with getLoadUrl()
+   606→     * If the set contains SyncIdName.Imdb then getLoadUrl() can be started with
+   607→     * an Imdb class which inherits from SyncId.
+   608→     *
+   609→     * getLoadUrl() is then used to get page url based on that ID.
+   610→     *
+   611→     * Example:
+   612→     * "tt6723592" -> getLoadUrl(ImdbSyncId("tt6723592")) -> "mainUrl/imdb/tt6723592" -> load("mainUrl/imdb/tt6723592")
+   613→     *
+   614→     * This is used to launch pages from personal lists or recommendations using IDs.
+   615→     **/
+   616→    open val supportedSyncNames = setOf<SyncIdName>()
+   617→
+   618→    open val supportedTypes = setOf(
+   619→        TvType.Movie,
+   620→        TvType.TvSeries,
+   621→        TvType.Cartoon,
+   622→        TvType.Anime,
+   623→        TvType.OVA,
+   624→    )
+   625→
+   626→    open val vpnStatus = VPNStatus.None
+   627→    open val providerType = ProviderType.DirectProvider
+   628→
+   629→    //emptyList<MainPageData>() //
+   630→    open val mainPage = listOf(MainPageData("", "", false))
+   631→
+   632→    // @WorkerThread
+   633→    open suspend fun getMainPage(
+   634→        page: Int,
+   635→        request: MainPageRequest,
+   636→    ): HomePageResponse? {
+   637→        throw NotImplementedError()
+   638→    }
+   639→
+   640→    /** Paginated search, starts with page: 1 */
+   641→    open suspend fun search(query: String, page: Int): SearchResponseList? {
+   642→        val searchResults = search(query) ?: return null
+   643→
+   644→        return newSearchResponseList(
+   645→            searchResults,
+   646→            false
+   647→        )
+   648→    }
+   649→
+   650→    // @WorkerThread
+   651→    open suspend fun search(query: String): List<SearchResponse>? {
+   652→        throw NotImplementedError()
+   653→    }
+   654→
+   655→    // @WorkerThread
+   656→    open suspend fun quickSearch(query: String): List<SearchResponse>? {
+   657→        throw NotImplementedError()
+   658→    }
+   659→
+   660→    // @WorkerThread
+   661→    /**
+   662→     * Based on data from search() or getMainPage() it generates a LoadResponse,
+   663→     * basically opening the info page from a link.
+   664→     * */
+   665→    open suspend fun load(url: String): LoadResponse? {
+   666→        throw NotImplementedError()
+   667→    }
+   668→
+   669→    /**
+   670→     * Largely redundant feature for most providers.
+   671→     *
+   672→     * This job runs in the background when a link is playing in exoplayer.
+   673→     * First implemented to do polling for sflix to keep the link from getting expired.
+   674→     *
+   675→     * This function might be updated to include exoplayer timestamps etc in the future
+   676→     * if the need arises.
+   677→     * */
+   678→    // @WorkerThread
+   679→    open suspend fun extractorVerifierJob(extractorData: String?) {
+   680→        throw NotImplementedError()
+   681→    }
+   682→
+   683→    /**Callback is fired once a link is found, will return true if method is executed successfully
+   684→     * @param data dataUrl string returned from [load] function.
+   685→     * @see newMovieLoadResponse
+   686→     * @see newTvSeriesLoadResponse
+   687→     * @see newLiveStreamLoadResponse
+   688→     * @see newAnimeLoadResponse
+   689→     * @see newTorrentLoadResponse
+   690→     * */
+   691→    // @WorkerThread
+   692→    open suspend fun loadLinks(
+   693→        data: String,
+   694→        isCasting: Boolean,
+   695→        subtitleCallback: (SubtitleFile) -> Unit,
+   696→        callback: (ExtractorLink) -> Unit
+   697→    ): Boolean {
+   698→        throw NotImplementedError()
+   699→    }
+   700→
+   701→    /** An okhttp interceptor for used in OkHttpDataSource */
+   702→    open fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+   703→        return null
+   704→    }
+   705→
+   706→    /**
+   707→     * Get the load() url based on a sync ID like IMDb or MAL.
+   708→     * Only contains SyncIds based on supportedSyncUrls.
+   709→     **/
+   710→    open suspend fun getLoadUrl(name: SyncIdName, id: String): String? {
+   711→        return null
+   712→    }
+   713→}
+   714→
+   715→fun base64Decode(string: String): String {
+   716→    // ISO-8859-1 decoding: each byte maps directly to its Unicode code point (0-255),
+   717→    // so we mask each byte to unsigned and convert to the corresponding Char manually.
+   718→    // decodeToString() can't be used here as it assumes UTF-8.
+   719→    val bytes = base64DecodeArray(string)
+   720→    return buildString(bytes.size) {
+   721→        for (b in bytes) {
+   722→            append((b.toInt() and 0xFF).toChar())
+   723→        }
+   724→    }
+   725→}
+   726→
+   727→fun base64DecodeArray(string: String): ByteArray {
+   728→    return Base64.decode(string)
+   729→}
+   730→
+   731→fun base64Encode(array: ByteArray): String {
+   732→    return Base64.encode(array)
+   733→}
+   734→
+   735→fun MainAPI.fixUrlNull(url: String?): String? {
+   736→    if (url.isNullOrEmpty()) {
+   737→        return null
+   738→    }
+   739→    return fixUrl(url)
+   740→}
+   741→
+   742→fun MainAPI.fixUrl(url: String): String {
+   743→    if (url.startsWith("http") ||
+   744→        // Do not fix JSON objects and arrays when passed as urls.
+   745→        url.startsWith("{\"") || url.startsWith("[")
+   746→    ) {
+   747→        return url
+   748→    }
+   749→    if (url.isEmpty()) {
+   750→        return ""
+   751→    }
+   752→
+   753→    val startsWithNoHttp = url.startsWith("//")
+   754→    if (startsWithNoHttp) {
+   755→        return "https:$url"
+   756→    } else {
+   757→        if (url.startsWith('/')) {
+   758→            return mainUrl + url
+   759→        }
+   760→        return "$mainUrl/$url"
+   761→    }
+   762→}
+   763→
+   764→/**
+   765→ * Sort the urls based on quality
+   766→ *
+   767→ * @param urls Set of [ExtractorLink]
+   768→ */
+   769→fun sortUrls(urls: Set<ExtractorLink>): List<ExtractorLink> {
+   770→    return urls.sortedBy { t -> -t.quality }
+   771→}
+   772→
+   773→/**
+   774→ * Splits the parameters of a [Url] into a map of key-value pairs.
+   775→ *
+   776→ * Unlike a manual `split("&")` / `split("=")` implementation, this relies on Ktor's
+   777→ * built-in parameters parser ([Url.parameters]), which already handles URL-decoding,
+   778→ * malformed pairs, and parameters without a value.
+   779→ *
+   780→ * Note: if a parameter key appears multiple times (e.g. `?a=1&a=2`), only the **first**
+   781→ * value is kept, since the return type is `Map<String, String>`. Use [Url.parameters]
+   782→ * directly if you need all values for repeated keys.
+   783→ *
+   784→ * @param url the [Url] whose parameters should be extracted.
+   785→ * @return a map of decoded parameter names to their first decoded value.
+   786→ *
+   787→ * @sample
+   788→ * splitUrlParameters(Url("https://example.com/path?foo=bar&baz=qux"))
+   789→ * // returns {"foo": "bar", "baz": "qux"}
+   790→ */
+   791→@Prerelease
+   792→fun splitUrlParameters(url: Url): Map<String, String> {
+   793→    return url.parameters.entries().associate { (key, values) -> key to values.firstOrNull().orEmpty() }
+   794→}
+   795→
+   796→/**
+   797→ * Splits the parameters of a raw URL [String] into a map of key-value pairs.
+   798→ *
+   799→ * Convenience overload for callers that have a URL as plain text rather than a parsed
+   800→ * [Url] instance. Internally parses [url] with Ktor's [Url] constructor and delegates
+   801→ * to [splitUrlParameters].
+   802→ *
+   803→ * @param url the URL string whose parameters should be extracted.
+   804→ * @return a map of decoded parameter names to their first decoded value.
+   805→ *
+   806→ * @sample
+   807→ * splitUrlParameters("https://example.com/path?foo=bar&baz=qux")
+   808→ * // returns {"foo": "bar", "baz": "qux"}
+   809→ */
+   810→@Prerelease
+   811→fun splitUrlParameters(url: String): Map<String, String> {
+   812→    return splitUrlParameters(Url(url))
+   813→}
+   814→
+   815→/**
+   816→ * Capitalize the first letter of string.
+   817→ *
+   818→ * @param str String to be capitalized
+   819→ * @return non-nullable String
+   820→ * @see capitalizeStringNullable
+   821→ */
+   822→fun capitalizeString(str: String): String {
+   823→    return capitalizeStringNullable(str) ?: str
+   824→}
+   825→
+   826→/** Capitalize the first letter of string.
+   827→ * @param str String to be capitalized
+   828→ * @return nullable String
+   829→ * @see capitalizeString
+   830→ * */
+   831→fun capitalizeStringNullable(str: String?): String? {
+   832→    if (str == null)
+   833→        return null
+   834→    return try {
+   835→        str.replaceFirstChar(Char::titlecase)
+   836→    } catch (e: Exception) {
+   837→        str
+   838→    }
+   839→}
+   840→
+   841→fun fixTitle(str: String): String {
+   842→    return str.split(" ").joinToString(" ") {
+   843→        it.lowercase()
+   844→            .replaceFirstChar(Char::titlecase)
+   845→    }
+   846→}
+   847→
+   848→@Deprecated(
+   849→    message = "Use newJsContext or evalJs instead.",
+   850→    level = DeprecationLevel.WARNING,
+   851→)
+   852→suspend fun getRhinoContext(): org.mozilla.javascript.Context {
+   853→    return Coroutines.mainWork {
+   854→        val rhino = org.mozilla.javascript.Context.enter()
+   855→        rhino.initSafeStandardObjects()
+   856→        rhino.setInterpretedMode(true)
+   857→        rhino
+   858→    }
+   859→}
+   860→
+   861→/** https://www.imdb.com/title/tt2861424/ -> tt2861424
+   862→ * @param url Imdb Url you need to get the Id from.
+   863→ * @return imdb id formatted string
+   864→ * @see imdbUrlToIdNullable
+   865→ * */
+   866→fun imdbUrlToId(url: String): String? {
+   867→    return Regex("/title/(tt[0-9]*)").find(url)?.groupValues?.get(1)
+   868→        ?: Regex("tt[0-9]{5,}").find(url)?.groupValues?.get(0)
+   869→}
+   870→
+   871→/** https://www.imdb.com/title/tt2861424/ -> tt2861424
+   872→ * @param url Imdb Url you need to get the Id from.
+   873→ * @return imdb id formatted nullable string
+   874→ * @see imdbUrlToId
+   875→ * */
+   876→fun imdbUrlToIdNullable(url: String?): String? {
+   877→    if (url == null) return null
+   878→    return imdbUrlToId(url)
+   879→}
+   880→
+   881→/** enum class determines provider type:
+   882→ *
+   883→ * MetaProvider: When data is fetched from a 3rd party site like imdb
+   884→ *
+   885→ * DirectProvider: When all data is from the site
+   886→ * */
+   887→enum class ProviderType {
+   888→    MetaProvider,
+   889→    DirectProvider,
+   890→}
+   891→
+   892→/** enum class determines VPN status (Non, MightBeNeeded or Torrent) */
+   893→enum class VPNStatus {
+   894→    None,
+   895→    MightBeNeeded,
+   896→    Torrent,
+   897→}
+   898→
+   899→/** enum class determines Show status (Completed or Ongoing) */
+   900→enum class ShowStatus {
+   901→    Completed,
+   902→    Ongoing,
+   903→}
+   904→
+   905→enum class DubStatus(val id: Int) {
+   906→    None(-1),
+   907→    Dubbed(1),
+   908→    Subbed(0),
+   909→}
+   910→
+   911→/** This is the primary way to store score/rating. Use Score.from or Score.from10 to parse the score
+   912→ * as it does not have a public constructor. Use toInt/toFloat to get back the score.
+   913→ *
+   914→ * Internally it stores it as an int up to 10^9 to represent up to 10 significant digits. So think
+   915→ * of this as a decimal class specifically for ratings.
+   916→ * */
+   917→@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
+   918→@Serializable
+   919→class Score private constructor(
+   920→    /** Decimal between [0, 10^9] representing the min score and max score respectively */
+   921→    @JsonProperty("data") @SerialName("data") private val data: Int,
+   922→) {
+   923→    override fun hashCode(): Int = this.data.hashCode()
+   924→    override fun equals(other: Any?): Boolean = other is Score && this.data == other.data
+   925→
+   926→    @Deprecated(
+   927→        "toOld() is deprecated. Use other Score methods instead.",
+   928→        level = DeprecationLevel.ERROR
+   929→    )
+   930→    fun toOld(): Int = toInt(10000)
+   931→
+   932→    fun toByte(maxScore: Int): Byte = toLong(maxScore).toByte()
+   933→
+   934→    fun toInt(maxScore: Int = 10): Int = toLong(maxScore).toInt()
+   935→
+   936→    fun toLong(maxScore: Int = 10): Long = (data.toLong() * maxScore.toLong()) / MAX.toLong()
+   937→
+   938→    fun toFloat(maxScore: Int = 10): Float =
+   939→        (data.toFloat() / MAX.toFloat()) * maxScore.toFloat()
+   940→
+   941→    fun toDouble(maxScore: Int = 10): Double =
+   942→        (data.toDouble() / MAX.toDouble()) * maxScore.toDouble()
+   943→
+   944→    override fun toString(): String = this.toString(10)
+   945→
+   946→    /** Formats the rating to a human readable format (with no rounding)
+   947→     *
+   948→     * However it may also return null if the score is less than the minimum score,
+   949→     * this is to avoid 0.0/10.0 in case of default = 0
+   950→     * */
+   951→    @Throws(IllegalArgumentException::class)
+   952→    fun toStringNull(
+   953→        minScore: Double,
+   954→        maxScore: Int,
+   955→        decimals: Int = 1,
+   956→        removeTrailingZeros: Boolean = true,
+   957→        decimalChar: Char = '.'
+   958→    ): String? {
+   959→        if (toDouble() < minScore) return null
+   960→        return toString(maxScore, decimals, removeTrailingZeros, decimalChar)
+   961→    }
+   962→
+   963→    /** Formats the rating to a human readable format (with no rounding) */
+   964→    @Throws(IllegalArgumentException::class)
+   965→    fun toString(
+   966→        maxScore: Int,
+   967→        decimals: Int = 1,
+   968→        removeTrailingZeros: Boolean = true,
+   969→        decimalChar: Char = '.'
+   970→    ): String {
+   971→        require(maxScore in 1..1000) {
+   972→            "maxScore ∈ [1,1000]"
+   973→        }
+   974→        require(decimals in 0..MAX_ZEROS) {
+   975→            "decimals ∈ [0,$MAX_ZEROS]"
+   976→        }
+   977→        var number = data.toLong() * maxScore.toLong()
+   978→        val chars = CharArray(MAX_ZEROS + 6)
+   979→
+   980→        for (i in chars.indices) {
+   981→            chars[i] = (number % 10L).toInt().digitToChar()
+   982→            number /= 10L
+   983→        }
+   984→
+   985→        var trailingZeros = MAX_ZEROS - decimals
+   986→        for (i in (MAX_ZEROS - decimals) until chars.size) {
+   987→            if (chars[i] != '0') {
+   988→                break
+   989→            }
+   990→            trailingZeros += 1
+   991→        }
+   992→
+   993→        var leadingZeros = 0
+   994→        for (i in chars.indices.reversed()) {
+   995→            if (chars[i] != '0') {
+   996→                break
+   997→            }
+   998→            leadingZeros += 1
+   999→        }
+  1000→
+  1001→        val stringBuilder = StringBuilder()
+  1002→        for (i in maxOf(MAX_ZEROS, (chars.size - leadingZeros - 1)) downTo MAX_ZEROS) {
+  1003→            stringBuilder.append(chars[i])
+  1004→        }
+  1005→
+  1006→        val end = if (removeTrailingZeros) {
+  1007→            maxOf(MAX_ZEROS - decimals, trailingZeros)
+  1008→        } else {
+  1009→            MAX_ZEROS - decimals
+  1010→        }
+  1011→
+  1012→        if (end <= MAX_ZEROS - 1) {
+  1013→            stringBuilder.append(decimalChar)
+  1014→            for (i in MAX_ZEROS - 1 downTo end) {
+  1015→                stringBuilder.append(chars[i])
+  1016→            }
+  1017→        }
+  1018→
+  1019→        return stringBuilder.toString()
+  1020→    }
+  1021→
+  1022→    companion object {
+  1023→        const val MAX: Int = 1000_000_000
+  1024→        const val MIN: Int = 0
+  1025→        const val MAX_ZEROS: Int = 9
+  1026→        private const val TAG: String = "Score"
+  1027→
+  1028→        @Deprecated(
+  1029→            "Score.fromOld is deprecated. Use other Score.from* methods instead.",
+  1030→            level = DeprecationLevel.ERROR
+  1031→        )
+  1032→        fun fromOld(value: Int?): Score? {
+  1033→            if (value == null) return null
+  1034→            if (value < 0 || value > 10000) {
+  1035→                com.lagradost.api.Log.w(TAG, "old: $value ∉ [0, 10000]")
+  1036→                return null
+  1037→            }
+  1038→            return Score(value * 100_000)
+  1039→        }
+  1040→
+  1041→        /** `value ∈ [0, maxScore]` */
+  1042→        fun from(value: Int?, maxScore: Int): Score? {
+  1043→            if (value == null) {
+  1044→                return null
+  1045→            }
+  1046→            if (value < 0 || value > maxScore) {
+  1047→                com.lagradost.api.Log.w(TAG, "fromInt: $value ∉ [0, $maxScore]")
+  1048→                return null
+  1049→            }
+  1050→            return Score((MAX / maxScore) * value)
+  1051→        }
+  1052→
+  1053→        /** `value ∈ [0.0, maxScore]` */
+  1054→        fun from(value: Double?, maxScore: Int): Score? {
+  1055→            if (value == null) {
+  1056→                return null
+  1057→            }
+  1058→            if (value < 0.0 || value > maxScore) {
+  1059→                com.lagradost.api.Log.w(TAG, "fromDouble: $value ∉ [0.0, $maxScore]")
+  1060→                return null
+  1061→            }
+  1062→            return Score(((MAX / maxScore).toDouble() * value).roundToInt())
+  1063→        }
+  1064→
+  1065→        /** `value ∈ [0.0f, maxScore]` */
+  1066→        fun from(value: Float?, maxScore: Int): Score? {
+  1067→            if (value == null) {
+  1068→                return null
+  1069→            }
+  1070→            if (value < 0.0 || value > maxScore) {
+  1071→                com.lagradost.api.Log.w(TAG, "fromFloat: $value ∉ [0.0f, $maxScore]")
+  1072→                return null
+  1073→            }
+  1074→            return Score(((MAX / maxScore).toFloat() * value).roundToInt())
+  1075→        }
+  1076→
+  1077→        /** `value ∈ ["0.0", maxScore]` */
+  1078→        fun from(value: String?, maxScore: Int): Score? =
+  1079→            from(value?.trim()?.toDoubleOrNull()?.absoluteValue, maxScore)
+  1080→
+  1081→        /** `value ∈ [0, 5]` */
+  1082→        fun from5(value: Int?): Score? = from(value, 5)
+  1083→
+  1084→        /** `value ∈ [0, 10]` */
+  1085→        fun from10(value: Int?): Score? = from(value, 10)
+  1086→
+  1087→        /** `value ∈ [0, 100]` */
+  1088→        fun from100(value: Int?): Score? = from(value, 100)
+  1089→
+  1090→        /** `value ∈ [0.0, 5.0]` */
+  1091→        fun from5(value: Double?): Score? = from(value, 5)
+  1092→
+  1093→        /** `value ∈ [0.0, 10.0]` */
+  1094→        fun from10(value: Double?): Score? = from(value, 10)
+  1095→
+  1096→        /** `value ∈ [0.0, 100.0]` */
+  1097→        fun from100(value: Double?): Score? = from(value, 100)
+  1098→
+  1099→        /** `value ∈ [0.0f, 5.0f]` */
+  1100→        fun from5(value: Float?): Score? = from(value, 5)
+  1101→
+  1102→        /** `value ∈ [0.0f, 10.0f]` */
+  1103→        fun from10(value: Float?): Score? = from(value, 10)
+  1104→
+  1105→        /** `value ∈ [0.0f, 100.0f]` */
+  1106→        fun from100(value: Float?): Score? = from(value, 100)
+  1107→
+  1108→        /** `value ∈ ["0.0", "5.0"]` */
+  1109→        fun from5(value: String?): Score? = from(value, 5)
+  1110→
+  1111→        /** `value ∈ ["0.0", "10.0"]` */
+  1112→        fun from10(value: String?): Score? = from(value, 10)
+  1113→
+  1114→        /** `value ∈ ["0.0", "100.0"]` */
+  1115→        fun from100(value: String?): Score? = from(value, 100)
+  1116→    }
+  1117→}
+  1118→
+  1119→@Suppress("UNUSED_PARAMETER")
+  1120→enum class TvType(value: Int?) {
+  1121→    Movie(1),
+  1122→    AnimeMovie(2),
+  1123→    TvSeries(3),
+  1124→    Cartoon(4),
+  1125→    Anime(5),
+  1126→    OVA(6),
+  1127→    Torrent(7),
+  1128→    Documentary(8),
+  1129→    AsianDrama(9),
+  1130→    Live(10),
+  1131→    NSFW(11),
+  1132→    Others(12),
+  1133→    Music(13),
+  1134→    AudioBook(14),
+  1135→
+  1136→    /** Won't load the built in player, make your own interaction */
+  1137→    CustomMedia(15),
+  1138→
+  1139→    Audio(16),
+  1140→    Podcast(17),
+  1141→    Video(18),
+  1142→}
+  1143→
+  1144→enum class AutoDownloadMode(val value: Int) {
+  1145→    Disable(0),
+  1146→    FilterByLang(1),
+  1147→    All(2),
+  1148→    NsfwOnly(3);
+  1149→
+  1150→    companion object {
+  1151→        infix fun getEnum(value: Int): AutoDownloadMode? =
+  1152→            entries.firstOrNull { it.value == value }
+  1153→    }
+  1154→}
+  1155→
+  1156→/** Extension function of [TvType] to check if the type is Movie.
+  1157→ * @return If the type is AnimeMovie, Live, Movie, Torrent, Video returns true otherwise returns false.
+  1158→ * */
+  1159→fun TvType.isMovieType(): Boolean {
+  1160→    return when (this) {
+  1161→        TvType.AnimeMovie,
+  1162→        TvType.Live,
+  1163→        TvType.Movie,
+  1164→        TvType.Torrent,
+  1165→        TvType.Video -> true
+  1166→
+  1167→        else -> false
+  1168→    }
+  1169→}
+  1170→
+  1171→/** Extension function of [TvType] to check if the type is Audio.
+  1172→ * @return If the type is Audio, AudioBook, Music, PodCast returns true otherwise returns false.
+  1173→ * */
+  1174→fun TvType.isAudioType(): Boolean {
+  1175→    return when (this) {
+  1176→        TvType.Audio,
+  1177→        TvType.AudioBook,
+  1178→        TvType.Music,
+  1179→        TvType.Podcast -> true
+  1180→
+  1181→        else -> false
+  1182→    }
+  1183→}
+  1184→
+  1185→/** Extension function of [TvType] to check if the type is Live stream.
+  1186→ * @return If the type is Live returns true, otherwise returns false.
+  1187→ * */
+  1188→fun TvType.isLiveStream(): Boolean {
+  1189→    return this == TvType.Live
+  1190→}
+  1191→
+  1192→/** Extension function of [TvType] to check if the type has an Anime opening.
+  1193→ * @return If the type is Anime or OVA returns true otherwise returns false.
+  1194→ * */
+  1195→fun TvType.isAnimeOp(): Boolean {
+  1196→    return this == TvType.Anime || this == TvType.OVA
+  1197→}
+  1198→
+  1199→/** Data class for the Subtitle file info.
+  1200→ * @property lang Subtitle file language.
+  1201→ * @property url Subtitle file url to download/load the file.
+  1202→ * @see newSubtitleFile
+  1203→ * */
+  1204→@ConsistentCopyVisibility
+  1205→data class SubtitleFile private constructor(
+  1206→    var lang: String,
+  1207→    var url: String,
+  1208→    var headers: Map<String, String>?
+  1209→) {
+  1210→    @Deprecated("Use newSubtitleFile method", level = DeprecationLevel.WARNING)
+  1211→    constructor(lang: String, url: String) : this(lang = lang, url = url, headers = null)
+  1212→
+  1213→    /** Language code to properly filter auto select / download subtitles */
+  1214→    val langTag: String?
+  1215→        get() = fromCodeToLangTagIETF(lang) ?: fromLanguageToTagIETF(lang, true)
+  1216→
+  1217→    /** Backwards compatible copy */
+  1218→    fun copy(
+  1219→        lang: String = this.lang, url: String = this.url
+  1220→    ): SubtitleFile = SubtitleFile(lang = lang, url = url, headers = this.headers)
+  1221→}
+  1222→
+  1223→// No `MainAPI.` to be able to use this in extractors
+  1224→suspend fun newSubtitleFile(
+  1225→    lang: String,
+  1226→    url: String,
+  1227→    initializer: suspend SubtitleFile.() -> Unit = { }
+  1228→): SubtitleFile {
+  1229→    @Suppress("DEPRECATION")
+  1230→    val builder = SubtitleFile(
+  1231→        lang, url
+  1232→    )
+  1233→    builder.initializer()
+  1234→
+  1235→    return builder
+  1236→}
+  1237→
+  1238→/** Data class for the Audio file/track info.
+  1239→ * @property lang Audio track language.
+  1240→ * @property url Audio file url to download/load the file.
+  1241→ * @property label Optional label to display (e.g., "English 5.1", "Japanese Stereo").
+  1242→ * @property headers Optional headers for the audio file request.
+  1243→ * @see newAudioFile
+  1244→ * */
+  1245→@ConsistentCopyVisibility
+  1246→@Serializable
+  1247→data class AudioFile internal constructor(
+  1248→    @JsonProperty("url") @SerialName("url") var url: String,
+  1249→    @JsonProperty("headers") @SerialName("headers") var headers: Map<String, String>? = null,
+  1250→)
+  1251→
+  1252→/** Creates an AudioFile with optional initializer for setting additional properties.
+  1253→ * @param url Audio file url.
+  1254→ * @param initializer Lambda to configure additional properties like headers.
+  1255→ * @return Configured AudioFile instance.
+  1256→ * */
+  1257→suspend fun newAudioFile(
+  1258→    url: String,
+  1259→    initializer: suspend AudioFile.() -> Unit = { }
+  1260→): AudioFile {
+  1261→    val builder = AudioFile(url)
+  1262→    builder.initializer()
+  1263→    return builder
+  1264→}
+  1265→
+  1266→/** Data class for the Homepage response info.
+  1267→ * @property items List of [HomePageList] items.
+  1268→ * @property hasNext if there is a next page or not.
+  1269→ * */
+  1270→data class HomePageResponse
+  1271→@Deprecated("Use newHomePageResponse method", level = DeprecationLevel.ERROR)
+  1272→constructor(
+  1273→    val items: List<HomePageList>,
+  1274→    val hasNext: Boolean = false
+  1275→)
+  1276→
+  1277→/** Data class for the Homepage list info.
+  1278→ * @property name name of the category shows on homepage UI.
+  1279→ * @property list list of [SearchResponse] items that will be added to the category.
+  1280→ * @property isHorizontalImages here you can control how the items' cards will be appeared on the UI (Horizontal or Vertical) cards.
+  1281→ * */
+  1282→data class HomePageList(
+  1283→    val name: String,
+  1284→    var list: List<SearchResponse>,
+  1285→    val isHorizontalImages: Boolean = false
+  1286→)
+  1287→
+  1288→/** Data class for the Search results.
+  1289→ * @property items list of [SearchResponse] items that will be added to the search row.
+  1290→ * @property hasNext if there is a next page or not.
+  1291→ * */
+  1292→data class SearchResponseList
+  1293→@Deprecated("Use newSearchResponseList method", level = DeprecationLevel.ERROR)
+  1294→constructor(
+  1295→    val items: List<SearchResponse>,
+  1296→    val hasNext: Boolean = false
+  1297→)
+  1298→
+  1299→/** enum class holds search quality.
+  1300→ *
+  1301→ * [Movie release types](https://en.wikipedia.org/wiki/Pirated_movie_release_types)**/
+  1302→@Suppress("UNUSED_PARAMETER")
+  1303→enum class SearchQuality(value: Int?) {
+  1304→    Cam(1),
+  1305→    CamRip(2),
+  1306→    HdCam(3),
+  1307→    Telesync(4), // TS
+  1308→    WorkPrint(5),
+  1309→    Telecine(6), // TC
+  1310→    HQ(7),
+  1311→    HD(8),
+  1312→    HDR(9), // high dynamic range
+  1313→    BlueRay(10),
+  1314→    DVD(11),
+  1315→    SD(12),
+  1316→    FourK(13),
+  1317→    UHD(14),
+  1318→    SDR(15), // standard dynamic range
+  1319→    WebRip(16)
+  1320→}
+  1321→
+  1322→/** Returns [SearchQuality] from String.
+  1323→ * @param string String text that will be converted into [SearchQuality].
+  1324→ * */
+  1325→fun getQualityFromString(string: String?): SearchQuality? {
+  1326→    //Add anything to here if you find a site that uses some specific naming convention
+  1327→    val check = (string ?: return null).trim().lowercase().replace(" ", "")
+  1328→
+  1329→    return when (check) {
+  1330→        "cam" -> SearchQuality.Cam
+  1331→        "camrip" -> SearchQuality.CamRip
+  1332→        "hdcam" -> SearchQuality.HdCam
+  1333→        "hdtc" -> SearchQuality.HdCam
+  1334→        "hdts" -> SearchQuality.HdCam
+  1335→        "highquality" -> SearchQuality.HQ
+  1336→        "hq" -> SearchQuality.HQ
+  1337→        "highdefinition" -> SearchQuality.HD
+  1338→        "hdrip" -> SearchQuality.HD
+  1339→        "hd" -> SearchQuality.HD
+  1340→        "hdtv" -> SearchQuality.HD
+  1341→        "rip" -> SearchQuality.CamRip
+  1342→        "telecine" -> SearchQuality.Telecine
+  1343→        "tc" -> SearchQuality.Telecine
+  1344→        "telesync" -> SearchQuality.Telesync
+  1345→        "ts" -> SearchQuality.Telesync
+  1346→        "dvd" -> SearchQuality.DVD
+  1347→        "dvdrip" -> SearchQuality.DVD
+  1348→        "dvdscr" -> SearchQuality.DVD
+  1349→        "blueray" -> SearchQuality.BlueRay
+  1350→        "bluray" -> SearchQuality.BlueRay
+  1351→        "blu" -> SearchQuality.BlueRay
+  1352→        "fhd" -> SearchQuality.HD
+  1353→        "br" -> SearchQuality.BlueRay
+  1354→        "standard" -> SearchQuality.SD
+  1355→        "sd" -> SearchQuality.SD
+  1356→        "4k" -> SearchQuality.FourK
+  1357→        "uhd" -> SearchQuality.UHD // may also be 4k or 8k
+  1358→        "blue" -> SearchQuality.BlueRay
+  1359→        "wp" -> SearchQuality.WorkPrint
+  1360→        "workprint" -> SearchQuality.WorkPrint
+  1361→        "webrip" -> SearchQuality.WebRip
+  1362→        "webdl" -> SearchQuality.WebRip
+  1363→        "web" -> SearchQuality.WebRip
+  1364→        "hdr" -> SearchQuality.HDR
+  1365→        "sdr" -> SearchQuality.SDR
+  1366→        else -> null
+  1367→    }
+  1368→}
+  1369→
+  1370→
+  1371→/**
+  1372→ * For APIs using the mainUrl in the prefix for `MainAPI::load`,
+  1373→ * this function replaces the `scheme`, `host` and `port` from an old link to the new mainUrl.
+  1374→ *
+  1375→ * https://en.wikipedia.org/wiki/Uniform_Resource_Identifier
+  1376→ * ```text
+  1377→ *           userinfo       host      port
+  1378→ *           ┌──┴───┐ ┌──────┴──────┐ ┌┴─┐
+  1379→ *   https://john.doe@www.example.com:1234/forum/questions/?tag=networking&order=newest#:~:text=whatever
+  1380→ *   └─┬─┘   └─────────────┬─────────────┘└───────┬───────┘ └────────────┬────────────┘ └───────┬───────┘
+  1381→ *   scheme            authority                path                   query                 fragment
+  1382→ * ```
+  1383→ */
+  1384→fun MainAPI.updateUrl(url: String): String {
+  1385→    return try {
+  1386→        val original = Url(url)
+  1387→        val updated = Url(mainUrl)
+  1388→
+  1389→        URLBuilder().apply {
+  1390→            takeFrom(updated)
+  1391→            user = original.user
+  1392→            password = original.password
+  1393→            encodedPath = original.encodedPath
+  1394→            fragment = original.fragment
+  1395→
+  1396→            parameters.clear()
+  1397→            parameters.appendAll(original.parameters)
+  1398→        }.buildString()
+  1399→    } catch (t: Throwable) {
+  1400→        logError(t)
+  1401→        url
+  1402→    }
+  1403→}
+  1404→
+  1405→/** Abstract interface of SearchResponse. */
+  1406→interface SearchResponse {
+  1407→    val name: String
+  1408→    val url: String
+  1409→    val apiName: String
+  1410→    var type: TvType?
+  1411→    var posterUrl: String?
+  1412→    var posterHeaders: Map<String, String>?
+  1413→    var id: Int?
+  1414→    var quality: SearchQuality?
+  1415→    var score: Score?
+  1416→}
+  1417→
+  1418→fun MainAPI.newTorrentSearchResponse(
+  1419→    name: String,
+  1420→    url: String,
+  1421→    type: TvType = TvType.Torrent,
+  1422→    fix: Boolean = true,
+  1423→    initializer: TorrentSearchResponse.() -> Unit = { },
+  1424→): TorrentSearchResponse {
+  1425→    @Suppress("DEPRECATION_ERROR")
+  1426→    val builder = TorrentSearchResponse(
+  1427→        name = name,
+  1428→        url = if (fix) fixUrl(url) else url,
+  1429→        apiName = this.name,
+  1430→        type = type,
+  1431→        // The initializer will handle this
+  1432→        posterUrl = null
+  1433→    )
+  1434→    builder.initializer()
+  1435→    return builder
+  1436→}
+  1437→
+  1438→fun MainAPI.newMovieSearchResponse(
+  1439→    name: String,
+  1440→    url: String,
+  1441→    type: TvType = TvType.Movie,
+  1442→    fix: Boolean = true,
+  1443→    initializer: MovieSearchResponse.() -> Unit = { },
+  1444→): MovieSearchResponse {
+  1445→    @Suppress("DEPRECATION_ERROR")
+  1446→    val builder = MovieSearchResponse(name, if (fix) fixUrl(url) else url, this.name, type)
+  1447→    builder.initializer()
+  1448→
+  1449→    return builder
+  1450→}
+  1451→
+  1452→fun MainAPI.newLiveSearchResponse(
+  1453→    name: String,
+  1454→    url: String,
+  1455→    type: TvType = TvType.Live,
+  1456→    fix: Boolean = true,
+  1457→    initializer: LiveSearchResponse.() -> Unit = { },
+  1458→): LiveSearchResponse {
+  1459→    @Suppress("DEPRECATION_ERROR")
+  1460→    val builder = LiveSearchResponse(
+  1461→        name = name,
+  1462→        url = if (fix) fixUrl(url) else url,
+  1463→        apiName = this.name,
+  1464→        type = type
+  1465→    )
+  1466→    builder.initializer()
+  1467→    return builder
+  1468→}
+  1469→
+  1470→fun MainAPI.newTvSeriesSearchResponse(
+  1471→    name: String,
+  1472→    url: String,
+  1473→    type: TvType = TvType.TvSeries,
+  1474→    fix: Boolean = true,
+  1475→    initializer: TvSeriesSearchResponse.() -> Unit = { },
+  1476→): TvSeriesSearchResponse {
+  1477→    @Suppress("DEPRECATION_ERROR")
+  1478→    val builder = TvSeriesSearchResponse(name, if (fix) fixUrl(url) else url, this.name, type)
+  1479→    builder.initializer()
+  1480→
+  1481→    return builder
+  1482→}
+  1483→
+  1484→fun MainAPI.newAnimeSearchResponse(
+  1485→    name: String,
+  1486→    url: String,
+  1487→    type: TvType = TvType.Anime,
+  1488→    fix: Boolean = true,
+  1489→    initializer: AnimeSearchResponse.() -> Unit = { },
+  1490→): AnimeSearchResponse {
+  1491→    @Suppress("DEPRECATION_ERROR")
+  1492→    val builder = AnimeSearchResponse(name, if (fix) fixUrl(url) else url, this.name, type)
+  1493→    builder.initializer()
+  1494→
+  1495→    return builder
+  1496→}
+  1497→
+  1498→/** Extension function that adds quality to [SearchResponse]
+  1499→ * @param quality as string
+  1500→ * */
+  1501→fun SearchResponse.addQuality(quality: String) {
+  1502→    this.quality = getQualityFromString(quality)
+  1503→}
+  1504→
+  1505→/** Extension function that adds poster to [SearchResponse]
+  1506→ * @param url nullable string for poster url
+  1507→ * @param headers Optional <String, String> map of request headers
+  1508→ * */
+  1509→fun SearchResponse.addPoster(url: String?, headers: Map<String, String>? = null) {
+  1510→    this.posterUrl = url
+  1511→    this.posterHeaders = headers
+  1512→}
+  1513→
+  1514→/** Extension function that adds poster to [LoadResponse]
+  1515→ * @param url nullable string for poster url
+  1516→ * @param headers Optional <String, String> map of request headers
+  1517→ * */
+  1518→fun LoadResponse.addPoster(url: String?, headers: Map<String, String>? = null) {
+  1519→    this.posterUrl = url
+  1520→    this.posterHeaders = headers
+  1521→}
+  1522→
+  1523→/** enum class of Actor roles (Main, Supporting, Background).*/
+  1524→enum class ActorRole {
+  1525→    Main,
+  1526→    Supporting,
+  1527→    Background,
+  1528→}
+  1529→
+  1530→/** Data class hold Actor personal information
+  1531→ * @property name Actor name.
+  1532→ * @property image Url nullable String to Actor image (Optional).
+  1533→ * */
+  1534→data class Actor(
+  1535→    val name: String,
+  1536→    val image: String? = null,
+  1537→)
+  1538→
+  1539→/** Data class hold Actor information
+  1540→ * @property actor [Actor] personal info, name & image.
+  1541→ * @property role [ActorRole] (Optional).
+  1542→ * @property roleString Actor role as a string (Optional).
+  1543→ * @property voiceActor Voice [Actor] personal info, can be used in case of Animation for voice actors. (Optional).
+  1544→ * */
+  1545→data class ActorData(
+  1546→    val actor: Actor,
+  1547→    val role: ActorRole? = null,
+  1548→    val roleString: String? = null,
+  1549→    val voiceActor: Actor? = null,
+  1550→)
+  1551→
+  1552→/** Data class of [SearchResponse] interface for Anime.
+  1553→ * @see newAnimeSearchResponse
+  1554→ * */
+  1555→data class AnimeSearchResponse
+  1556→@Deprecated("Use newAnimeSearchResponse", level = DeprecationLevel.ERROR)
+  1557→constructor(
+  1558→    override val name: String,
+  1559→    override val url: String,
+  1560→    override val apiName: String,
+  1561→    override var type: TvType? = null,
+  1562→
+  1563→    override var posterUrl: String? = null,
+  1564→    var year: Int? = null,
+  1565→    var dubStatus: MutableSet<DubStatus>? = null,
+  1566→
+  1567→    var otherName: String? = null,
+  1568→    var episodes: MutableMap<DubStatus, Int> = mutableMapOf(),
+  1569→
+  1570→    override var id: Int? = null,
+  1571→    override var quality: SearchQuality? = null,
+  1572→    override var posterHeaders: Map<String, String>? = null,
+  1573→    override var score: Score? = null,
+  1574→) : SearchResponse
+  1575→
+  1576→fun AnimeSearchResponse.addDubStatus(status: DubStatus, episodes: Int? = null) {
+  1577→    this.dubStatus = dubStatus?.also { it.add(status) } ?: mutableSetOf(status)
+  1578→    if (this.type?.isMovieType() != true)
+  1579→        if (episodes != null && episodes > 0)
+  1580→            this.episodes[status] = episodes
+  1581→}
+  1582→
+  1583→fun AnimeSearchResponse.addDubStatus(isDub: Boolean, episodes: Int? = null) {
+  1584→    addDubStatus(if (isDub) DubStatus.Dubbed else DubStatus.Subbed, episodes)
+  1585→}
+  1586→
+  1587→fun AnimeSearchResponse.addDub(episodes: Int?) {
+  1588→    if (episodes == null || episodes <= 0) return
+  1589→    addDubStatus(DubStatus.Dubbed, episodes)
+  1590→}
+  1591→
+  1592→fun AnimeSearchResponse.addSub(episodes: Int?) {
+  1593→    if (episodes == null || episodes <= 0) return
+  1594→    addDubStatus(DubStatus.Subbed, episodes)
+  1595→}
+  1596→
+  1597→fun AnimeSearchResponse.addDubStatus(
+  1598→    dubExist: Boolean,
+  1599→    subExist: Boolean,
+  1600→    dubEpisodes: Int? = null,
+  1601→    subEpisodes: Int? = null
+  1602→) {
+  1603→    if (dubExist)
+  1604→        addDubStatus(DubStatus.Dubbed, dubEpisodes)
+  1605→
+  1606→    if (subExist)
+  1607→        addDubStatus(DubStatus.Subbed, subEpisodes)
+  1608→}
+  1609→
+  1610→fun AnimeSearchResponse.addDubStatus(status: String, episodes: Int? = null) {
+  1611→    if (status.contains("(dub)", ignoreCase = true)) {
+  1612→        addDubStatus(DubStatus.Dubbed, episodes)
+  1613→    } else if (status.contains("(sub)", ignoreCase = true)) {
+  1614→        addDubStatus(DubStatus.Subbed, episodes)
+  1615→    }
+  1616→}
+  1617→
+  1618→/** Data class of [SearchResponse] interface for Torrent.
+  1619→ * @see newTorrentSearchResponse
+  1620→ * */
+  1621→data class TorrentSearchResponse
+  1622→@Deprecated("Use newTorrentSearchResponse", level = DeprecationLevel.ERROR)
+  1623→constructor(
+  1624→    override val name: String,
+  1625→    override val url: String,
+  1626→    override val apiName: String,
+  1627→    override var type: TvType?,
+  1628→
+  1629→    override var posterUrl: String?,
+  1630→    override var id: Int? = null,
+  1631→    override var quality: SearchQuality? = null,
+  1632→    override var posterHeaders: Map<String, String>? = null,
+  1633→    override var score: Score? = null,
+  1634→) : SearchResponse {
+  1635→    @Suppress("DEPRECATION_ERROR")
+  1636→    @Deprecated(
+  1637→        "Use newTorrentSearchResponse",
+  1638→        level = DeprecationLevel.ERROR
+  1639→    )
+  1640→    constructor(
+  1641→        name: String,
+  1642→        url: String,
+  1643→        apiName: String,
+  1644→        type: TvType?,
+  1645→        posterUrl: String?,
+  1646→        id: Int? = null,
+  1647→        quality: SearchQuality? = null,
+  1648→        posterHeaders: Map<String, String>? = null
+  1649→    ) : this(name, url, apiName, type, posterUrl, id, quality, posterHeaders, null)
+  1650→}
+  1651→
+  1652→/** Data class of [SearchResponse] interface for Movies.
+  1653→ * @see newMovieSearchResponse
+  1654→ * */
+  1655→data class MovieSearchResponse
+  1656→@Deprecated("Use newMovieSearchResponse", level = DeprecationLevel.ERROR)
+  1657→constructor(
+  1658→    override val name: String,
+  1659→    override val url: String,
+  1660→    override val apiName: String,
+  1661→    override var type: TvType? = null,
+  1662→
+  1663→    override var posterUrl: String? = null,
+  1664→    var year: Int? = null,
+  1665→    override var id: Int? = null,
+  1666→    override var quality: SearchQuality? = null,
+  1667→    override var posterHeaders: Map<String, String>? = null,
+  1668→    override var score: Score? = null,
+  1669→) : SearchResponse {
+  1670→    @Suppress("DEPRECATION_ERROR")
+  1671→    @Deprecated(
+  1672→        "Use newMovieSearchResponse",
+  1673→        level = DeprecationLevel.ERROR
+  1674→    )
+  1675→    constructor(
+  1676→        name: String,
+  1677→        url: String,
+  1678→        apiName: String,
+  1679→        type: TvType?,
+  1680→        posterUrl: String?,
+  1681→        year: Int? = null,
+  1682→        id: Int? = null,
+  1683→        quality: SearchQuality? = null,
+  1684→        posterHeaders: Map<String, String>? = null
+  1685→    ) : this(name, url, apiName, type, posterUrl, id, year, quality, posterHeaders, null)
+  1686→}
+  1687→
+  1688→/** Data class of [SearchResponse] interface for Live streams.
+  1689→ * @see newLiveSearchResponse
+  1690→ * */
+  1691→data class LiveSearchResponse
+  1692→@Deprecated("Use newLiveSearchResponse", level = DeprecationLevel.ERROR)
+  1693→constructor(
+  1694→    override val name: String,
+  1695→    override val url: String,
+  1696→    override val apiName: String,
+  1697→    override var type: TvType? = null,
+  1698→
+  1699→    override var posterUrl: String? = null,
+  1700→    override var id: Int? = null,
+  1701→    override var quality: SearchQuality? = null,
+  1702→    override var posterHeaders: Map<String, String>? = null,
+  1703→    var lang: String? = null,
+  1704→    override var score: Score? = null,
+  1705→) : SearchResponse {
+  1706→    @Suppress("DEPRECATION_ERROR")
+  1707→    @Deprecated(
+  1708→        "Use newLiveSearchResponse",
+  1709→        level = DeprecationLevel.ERROR
+  1710→    )
+  1711→    constructor(
+  1712→        name: String,
+  1713→        url: String,
+  1714→        apiName: String,
+  1715→        type: TvType?,
+  1716→        posterUrl: String?,
+  1717→        id: Int? = null,
+  1718→        quality: SearchQuality? = null,
+  1719→        posterHeaders: Map<String, String>? = null,
+  1720→        lang: String? = null,
+  1721→    ) : this(name, url, apiName, type, posterUrl, id, quality, posterHeaders, lang, null)
+  1722→}
+  1723→
+  1724→/** Data class of [SearchResponse] interface for Tv series.
+  1725→ * @see newTvSeriesSearchResponse
+  1726→ * */
+  1727→data class TvSeriesSearchResponse
+  1728→@Deprecated("Use newTvSeriesSearchResponse", level = DeprecationLevel.ERROR)
+  1729→constructor(
+  1730→    override val name: String,
+  1731→    override val url: String,
+  1732→    override val apiName: String,
+  1733→    override var type: TvType? = null,
+  1734→
+  1735→    override var posterUrl: String? = null,
+  1736→    var year: Int? = null,
+  1737→    var episodes: Int? = null,
+  1738→    override var id: Int? = null,
+  1739→    override var quality: SearchQuality? = null,
+  1740→    override var posterHeaders: Map<String, String>? = null,
+  1741→    override var score: Score? = null,
+  1742→) : SearchResponse {
+  1743→    @Suppress("DEPRECATION_ERROR")
+  1744→    @Deprecated(
+  1745→        "Use newTvSeriesSearchResponse",
+  1746→        level = DeprecationLevel.ERROR
+  1747→    )
+  1748→    constructor(
+  1749→        name: String,
+  1750→        url: String,
+  1751→        apiName: String,
+  1752→        type: TvType?,
+  1753→        posterUrl: String?,
+  1754→        year: Int? = null,
+  1755→        episodes: Int? = null,
+  1756→        id: Int? = null,
+  1757→        quality: SearchQuality? = null,
+  1758→        posterHeaders: Map<String, String>? = null,
+  1759→    ) : this(
+  1760→        name,
+  1761→        url,
+  1762→        apiName,
+  1763→        type,
+  1764→        posterUrl,
+  1765→        year,
+  1766→        episodes,
+  1767→        id,
+  1768→        quality,
+  1769→        posterHeaders,
+  1770→        null
+  1771→    )
+  1772→}
+  1773→
+  1774→/** Data class of Trailer data.
+  1775→ * @property extractorUrl Url string of the Trailer video.
+  1776→ * @property referer Nullable string of referer to be used in network request.
+  1777→ * @property raw determines if [extractorUrl] should be used as direct Trailer video link instead of extracting it.
+  1778→ * */
+  1779→data class TrailerData(
+  1780→    val extractorUrl: String,
+  1781→    val referer: String?,
+  1782→    val raw: Boolean,
+  1783→    val headers: Map<String, String> = mapOf(),
+  1784→    // var mirrors: List<ExtractorLink>,
+  1785→    // var subtitles: List<SubtitleFile> = emptyList(),
+  1786→)
+  1787→
+  1788→/** Abstract interface of LoadResponse responses
+  1789→ * @property name Title of the media, appears on result page.
+  1790→ * @property url Url of the media.
+  1791→ * @property apiName Plugin name, appears on result page.
+  1792→ * @property type [TvType] of the media .
+  1793→ * @property posterUrl Url of the media poster, appears on Top of result page.
+  1794→ * @property year Year of the media, appears on result page.
+  1795→ * @property plot Plot of the media, appears on result page.
+  1796→ * @property score Rating of the media, appears on result page.
+  1797→ * Use it with addScore or by assigning a score like `Score.from(string/float/int/double, 10)` or `Score.from10(string/float/int/double)`
+  1798→ * @property tags Tags of the media, appears on result page.
+  1799→ * @property duration duration of the media, appears on result page.
+  1800→ * @property trailers list of the media [TrailerData], used to load trailers.
+  1801→ * @property recommendations list of the [SearchResponse] related to media, appears on result page.
+  1802→ * @property actors list of the [ActorData] casted in the media, appears on result page.
+  1803→ * @property comingSoon determines if the media is released or coming soon.
+  1804→ * @property syncData Online sync services compatible with the media.
+  1805→ * @property posterHeaders headers map used by network request to get the poster.
+  1806→ * @property backgroundPosterUrl Url of the media background poster.
+  1807→ * @property logoUrl Image URL used as a visual title replacement.If the logo loads successfully, it is shown instead of the text title. If the logo is null or fails to load, the text title is displayed.
+  1808→ * @property contentRating content rating of the media, appears on result page.
+  1809→ * @property uniqueUrl The key used for storing the persistent data about an entry.
+  1810→ * On older versions `url` was used instead, but this was added to support JSON that can change as the url parameter.
+  1811→ *
+  1812→ * If you have JSON that can change you can set `url = jsonObject.toJson()` and `uniqueId = jsonObject.id.toString()`
+  1813→ * */
+  1814→interface LoadResponse {
+  1815→    var name: String
+  1816→    var url: String
+  1817→    var apiName: String
+  1818→    var type: TvType
+  1819→    var posterUrl: String?
+  1820→    var year: Int?
+  1821→    var plot: String?
+  1822→
+  1823→    var score: Score?
+  1824→    var tags: List<String>?
+  1825→    var duration: Int? // in minutes
+  1826→    var trailers: MutableList<TrailerData>
+  1827→
+  1828→    var recommendations: List<SearchResponse>?
+  1829→    var actors: List<ActorData>?
+  1830→    var comingSoon: Boolean
+  1831→    var syncData: MutableMap<String, String>
+  1832→    var posterHeaders: Map<String, String>?
+  1833→    var backgroundPosterUrl: String?
+  1834→
+  1835→    var logoUrl: String?
+  1836→    var contentRating: String?
+  1837→
+  1838→    var uniqueUrl: String
+  1839→
+  1840→    @Deprecated(
+  1841→        "`rating` is the old scoring system, use score instead",
+  1842→        replaceWith = ReplaceWith("score"),
+  1843→        level = DeprecationLevel.ERROR
+  1844→    )
+  1845→    var rating: Int?
+  1846→        set(value) {
+  1847→            @Suppress("DEPRECATION_ERROR")
+  1848→            this.score = Score.fromOld(value)
+  1849→        }
+  1850→        @Suppress("DEPRECATION_ERROR")
+  1851→        get() = score?.toOld()
+  1852→
+  1853→    companion object {
+  1854→        var malIdPrefix = "" //malApi.idPrefix
+  1855→
+  1856→        var kitsuIdPrefix = "" //kitsuApi.idPrefix
+  1857→        var aniListIdPrefix = "" //aniListApi.idPrefix
+  1858→        var simklIdPrefix = "" //simklApi.idPrefix
+  1859→        var isTrailersEnabled = true
+  1860→
+  1861→        /**
+  1862→         * The ID string is a way to keep a collection of services in one single ID using a map
+  1863→         * This adds a database service (like imdb) to the string and returns the new string.
+  1864→         */
+  1865→        fun addIdToString(idString: String?, database: SimklSyncServices, id: String?): String? {
+  1866→            if (id == null) return idString
+  1867→            return (readIdFromString(idString) + mapOf(database to id)).toJson()
+  1868→        }
+  1869→
+  1870→        /** Read the id string to get all other ids */
+  1871→        fun readIdFromString(idString: String?): Map<SimklSyncServices, String> {
+  1872→            return tryParseJson<Map<SimklSyncServices, String>>(idString) ?: return emptyMap()
+  1873→        }
+  1874→
+  1875→        fun LoadResponse.isMovie(): Boolean {
+  1876→            return this.type.isMovieType() || this is MovieLoadResponse
+  1877→        }
+  1878→
+  1879→        @JvmName("addActorNames")
+  1880→        fun LoadResponse.addActors(actors: List<String>?) {
+  1881→            this.actors = actors?.map { ActorData(Actor(it)) }
+  1882→        }
+  1883→
+  1884→        @JvmName("addActors")
+  1885→        fun LoadResponse.addActors(actors: List<Pair<Actor, String?>>?) {
+  1886→            this.actors = actors?.map { (actor, role) -> ActorData(actor, roleString = role) }
+  1887→        }
+  1888→
+  1889→        @JvmName("addActorsRole")
+  1890→        fun LoadResponse.addActors(actors: List<Pair<Actor, ActorRole?>>?) {
+  1891→            this.actors = actors?.map { (actor, role) -> ActorData(actor, role = role) }
+  1892→        }
+  1893→
+  1894→        /**
+  1895→         * Internal helper function to add simkl ids from other databases.
+  1896→         */
+  1897→        private fun LoadResponse.addSimklId(
+  1898→            database: SimklSyncServices,
+  1899→            id: String?
+  1900→        ) {
+  1901→            safe {
+  1902→                this.syncData[simklIdPrefix] =
+  1903→                    addIdToString(this.syncData[simklIdPrefix], database, id.toString())
+  1904→                        ?: return@safe
+  1905→            }
+  1906→        }
+  1907→
+  1908→        @JvmName("addActorsOnly")
+  1909→        fun LoadResponse.addActors(actors: List<Actor>?) {
+  1910→            this.actors = actors?.map { actor -> ActorData(actor) }
+  1911→        }
+  1912→
+  1913→        fun LoadResponse.getMalId(): String? {
+  1914→            return this.syncData[malIdPrefix]
+  1915→        }
+  1916→
+  1917→        fun LoadResponse.getKitsuId(): String? {
+  1918→            return this.syncData[kitsuIdPrefix]
+  1919→        }
+  1920→        fun LoadResponse.getAniListId(): String? {
+  1921→            return this.syncData[aniListIdPrefix]
+  1922→        }
+  1923→
+  1924→        fun LoadResponse.getImdbId(): String? {
+  1925→            return safe {
+  1926→                readIdFromString(this.syncData[simklIdPrefix])[SimklSyncServices.Imdb]
+  1927→            }
+  1928→        }
+  1929→
+  1930→        fun LoadResponse.getTMDbId(): String? {
+  1931→            return safe {
+  1932→                readIdFromString(this.syncData[simklIdPrefix])[SimklSyncServices.Tmdb]
+  1933→            }
+  1934→        }
+  1935→
+  1936→        fun LoadResponse.addMalId(id: Int?) {
+  1937→            this.syncData[malIdPrefix] = (id ?: return).toString()
+  1938→            this.addSimklId(SimklSyncServices.Mal, id.toString())
+  1939→        }
+  1940→
+  1941→        fun LoadResponse.addKitsuId(id: Int?) {
+  1942→            this.syncData[kitsuIdPrefix] = (id ?: return).toString()
+  1943→        }
+  1944→
+  1945→        fun LoadResponse.addAniListId(id: Int?) {
+  1946→            this.syncData[aniListIdPrefix] = (id ?: return).toString()
+  1947→            this.addSimklId(SimklSyncServices.AniList, id.toString())
+  1948→        }
+  1949→
+  1950→        fun LoadResponse.addSimklId(id: Int?) {
+  1951→            this.addSimklId(SimklSyncServices.Simkl, id.toString())
+  1952→        }
+  1953→
+  1954→        fun LoadResponse.addImdbUrl(url: String?) {
+  1955→            addImdbId(imdbUrlToIdNullable(url))
+  1956→        }
+  1957→
+  1958→        /**better to call addTrailer with multiple trailers directly instead of calling this multiple times*/
+  1959→        @Suppress("RedundantSuspendModifier")
+  1960→        suspend fun LoadResponse.addTrailer(
+  1961→            trailerUrl: String?,
+  1962→            referer: String? = null,
+  1963→            addRaw: Boolean = false
+  1964→        ) {
+  1965→            if (!isTrailersEnabled || trailerUrl.isNullOrBlank()) return
+  1966→            this.trailers.add(TrailerData(trailerUrl, referer, addRaw))
+  1967→            /*val links = arrayListOf<ExtractorLink>()
+  1968→            val subs = arrayListOf<SubtitleFile>()
+  1969→            if (!loadExtractor(
+  1970→                    trailerUrl,
+  1971→                    referer,
+  1972→                    { subs.add(it) },
+  1973→                    { links.add(it) }) && addRaw
+  1974→            ) {
+  1975→                this.trailers.add(
+  1976→                    TrailerData(
+  1977→                        listOf(
+  1978→                            ExtractorLink(
+  1979→                                "",
+  1980→                                "Trailer",
+  1981→                                trailerUrl,
+  1982→                                referer ?: "",
+  1983→                                Qualities.Unknown.value,
+  1984→                                trailerUrl.contains(".m3u8")
+  1985→                            )
+  1986→                        ), listOf()
+  1987→                    )
+  1988→                )
+  1989→            } else {
+  1990→                this.trailers.add(TrailerData(links, subs))
+  1991→            }*/
+  1992→        }
+  1993→
+  1994→        /*
+  1995→        fun LoadResponse.addTrailer(newTrailers: List<ExtractorLink>) {
+  1996→            trailers.addAll(newTrailers.map { TrailerData(listOf(it)) })
+  1997→        }*/
+  1998→
+  1999→        @Suppress("RedundantSuspendModifier")
+  2000→        suspend fun LoadResponse.addTrailer(
+
+[showing lines 1-2000 of 2861; use offset=2001 with limit to continue reading]
