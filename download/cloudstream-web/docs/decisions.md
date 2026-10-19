@@ -276,6 +276,69 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
   typo-squatted domain that is not an exact name+TLD swap will not resolve — fail-safe direction.
   Adversarial regressions for every vector above live in `tests/registry.test.ts`.
 
+## D18 — HTTP engine + SSRF guard: posture, guarantees, and explicit security limitations
+
+- **Status:** Adopted (Phase 2 steps 1–2, implemented in `src/server/http/`)
+- **Context:** Roadmap Phase 2 tasks 1–2: the server-side HTTP engine (nicehttp equivalent) and the
+  request guard. Every provider fetch is a server-side request to an operator-relevant destination,
+  making SSRF the dominant security risk (risk register #4/#9).
+- **Decision:** `HttpEngine` (undici-based) + `GuardedDnsResolver` + `validateDestinationUrl`, with
+  these guarantees, each pinned by tests:
+  1. **Schemes**: http/https only; embedded credentials rejected; unparseable URLs rejected.
+  2. **Destination IP policy**: full non-public IPv4 range set (loopback, RFC1918, CGNAT,
+     link-local incl. cloud metadata `169.254.169.254`, TEST-NETs, multicast, reserved, benchmarking,
+     0/8) and IPv6 equivalents (loopback, ULA incl. `fd00:ec2::254`, link-local, multicast,
+     discard, Teredo, 6to4, NAT64, documentation, mapped-IPv4 unwrapped and re-classified). WHATWG
+     URL normalization is exploited defensively (decimal/hex/octal/short IPv4 forms normalize to
+     dotted form before the guard sees them).
+  3. **Hostname policy**: `localhost`, `*.localhost`, `*.local`, `*.internal`, `*.home.arpa`, and
+     known metadata/control hostnames are blocked WITHOUT any DNS call.
+  4. **DNS rebinding**: resolution validates EVERY A/AAA record (fail closed on ANY non-public
+     record — dual-record answers cannot slip through) and caches the validated set; undici's
+     connector `lookup` is replaced by the guarded resolver, so the TCP connection can ONLY use
+     addresses from the validated cache (SNI/Host stay the original hostname). Validation and
+     connection cannot disagree: there is exactly one source of truth, and keep-alive pools never
+     re-resolve.
+  5. **Redirects**: followed manually; every `Location` re-enters the full pipeline (a redirect can
+     never reach a prohibited destination — tested against the metadata IP); redirect count capped;
+     301/302/303→GET, 307/308 preserve method+body; cross-HOST hops drop `authorization` and do not
+     carry jar cookies (cookies are host-scoped per RFC 6265, so cross-PORT stays same-cookie —
+     tested with distinct hostnames).
+  6. **Limits**: total-deadline abort (timeout + caller `AbortSignal` + size cap share one
+     cancellation path), hard response byte cap, bounded LRU response cache (TTL, entry count,
+     bytes; `no-store`/`private`/`max-age` honored; set-cookie responses never cached).
+  7. **Cookies**: RFC 6265-style jar, opt-in, ONE jar per engine instance (per provider);
+     `Domain=` cannot be planted for foreign hosts; count/value caps.
+  8. **Header hygiene**: caller headers pass a denylist (hop-by-hop, `host`, `content-length`,
+     `cookie`) + injection checks (CR/LF/NUL rejected) + caps; `redactHeadersForLog` hides
+     credential values; engine events carry origin+path only (never query strings or headers).
+  9. **robots.txt**: RFC 9309-ish gate for GET/HEAD (longest-match, allow-wins-ties, `*`/`$`
+     patterns, UA group specificity); 4xx → allow, 5xx/failure → DISALLOW with a short retry TTL
+     (fail closed).
+  10. **Approvals**: `approvedDestinations` is the ONLY private-destination exception (operator's
+      own LAN/self-hosted services — content category D3.3); approvals override range/hostname
+      blocks for the named host only, never scheme checks, credential rejection, or DNS pinning.
+- **Explicit security limitations (must be re-reviewed before public deployment, D2-F gate):**
+  1. This is a LIBRARY for first-party provider code — no HTTP surface accepts client-supplied
+     URLs in this phase; the future media relay (Phase 4) needs its own auth/quota/kill-switch
+     layer on top.
+  2. DNS: the guarded resolver uses `dns.resolve*` (platform resolver, no `/etc/hosts`, no
+     DNSSEC/DoH); a malicious resolver could still return attacker-controlled PUBLIC IPs — scoped
+     by provider curation, not eliminated.
+  3. Redirect policy allows http↔https downgrades (validated per hop); no HSTS tracking.
+  4. Cookie jar implements no public-suffix list and ignores SameSite (server-side jar); `Domain=`
+     beyond the setting host is rejected, but suffix acceptance without PSL is approximate.
+  5. Response cache keys ignore `Vary` headers.
+  6. No automatic response decompression (undici `request`); providers receive encoded bodies if
+     they opt into encodings.
+  7. Undici CVE surface is inherited; dependency pinning/audit happens in the Phase 7 NOTICE audit.
+  8. `approvedDestinations` grants are operator-managed strings; approving a hostname whose DNS is
+     attacker-controlled would validate whatever it resolves to (fail-closed elsewhere still
+     applies).
+  9. SSRF protection covers IP-literal, DNS, and redirect vectors tested here; it is NOT claimed
+     complete against exotic vectors (e.g. HTTP/2 connect-style abuse, 0-RTT reuse across engines,
+     TIME_WAIT hijacking on multi-user hosts).
+
 ---
 
 ## Open future decisions (summary)
