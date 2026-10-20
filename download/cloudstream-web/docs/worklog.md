@@ -147,3 +147,21 @@ Stage Summary:
 - Deliverable: docs/phase3-preflight-checklist.md (review-only) + roadmap status pointer; repo left code-identical to 6fd80cc.
 - Key open gates before any provider code: owner approval of checklist; P4 (archived dated Terms of Use) resolving E20/R1; D20 recording allowlist + pacing values; playback claims OFF until P2/P3 probes.
 - Stopped for owner approval as instructed; Phase 3 not started.
+
+---
+Task ID: 8
+Agent: main (Z.ai)
+Task: Review and revise docs/phase3-preflight-checklist.md per the owner's 7-point instruction (documentation only — no provider code, no probes run).
+
+Work Log:
+- Corrected playback/CORS model: native cross-origin <video> without crossorigin attribute fetches media in no-cors mode and does not generally require CORS permission; CORS required only for JS-fetched playback (hls.js/DASH manifest+segment requests) and crossorigin uses (canvas/Web Audio). Rewrote §5 and §6 accordingly; tagged the spec-level behavior INFERRED-until-P2a, not as an IA-verified fact.
+- Probe plan restructured into separate behaviors: P1 robots; P2a native-playback fetchability; P2b byte-range seeking (206 + mid-file range); P2c redirect chain; P2d codec/container sanity (ftyp); P2e required-headers absence; P2f ACAO diagnostic ONLY (never a pass/fail for native video); P3 ToU dated snapshot (renumbered from old P4). Updated every cross-reference (§5/§6/§8/§10/§11); grep-verified no stale P4/standalone-P2 tokens remain.
+- Strengthened copyright policy: collection-level allowlist demoted to a necessary-not-sufficient search pool; mandatory per-item rights register (docs/evidence/ia-rights-register.md) recording identifier, reviewed rights evidence, concluded permission scope, attribution requirements, review date, reviewer; uploader license metadata = evidence to review, never an automatic guarantee; load()/loadLinks() must refuse identifiers absent from the register; register-enforcement unit test added to §9.2.
+- Preserved ToU gate: API publicness and robots non-exclusion explicitly do NOT establish that every proposed application use is permitted; ToU review remains the authority (A1/R1).
+- Recorded robots.txt finding as E24 (OWNER-PROVIDED tag added to legend): visible wildcard rules disallow /control/ and /report/; intended API paths not visibly disallowed; re-verification in P1; robots.txt is not a substitute for terms review. Updated §7 error table and R7.
+- Unsupported-claims sweep: fixed §5 "progressive MP4 (byte-range HTTP)" overstatement (byte-range is E17/UNKNOWN, now stated as a prerequisite); evidence log entries E16/E17/E18 re-scoped with their probe IDs; all findings tagged VERIFIED/INFERRED/UNKNOWN/CONTEXT/OWNER-PROVIDED.
+- Non-authorization made explicit in Status, §10 recommendation and D20 draft: checklist approval alone does not authorize implementation; adopting D20 is the only authorizing act.
+
+Stage Summary:
+- docs/phase3-preflight-checklist.md at revision 2 (456 lines); no implementation files touched; no probes run; baseline still 6fd80cc + docs commits.
+- Open gates unchanged: owner approval of revision 2; P3 (ToU archive) resolving A1/R1; D20 adoption with collection pools + initial register entries + pacing values; playback claims OFF until P2a-P2f.

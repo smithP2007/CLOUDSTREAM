@@ -1,16 +1,24 @@
 # Phase 3 Pre-Flight Checklist — Internet Archive Provider
 
-**Status:** DRAFT for owner review — **NOT approved**. No provider code exists or was written.
+**Status:** DRAFT, revision 2 — for owner review. **NOT approved**; this revision does NOT authorize
+implementation. No provider code exists or was written.
 **Prepared:** 2026-10-20, after Phase 2 steps 1–5 complete (commit `6fd80cc`; baseline re-verified this
 session: 267/267 vitest tests, 11 files green; `typecheck`/`lint`/`build` clean).
+**Revision 2 (2026-10-20, owner-requested corrections):** playback/CORS model corrected (native
+`<video>` vs JS-fetched playback); probe plan split into separate behaviors with
+`Access-Control-Allow-Origin` demoted to diagnostic evidence; copyright posture strengthened to an
+individually approved per-item rights register; robots.txt finding recorded (E24); unsupported-claim
+sweep re-tagged. Terms-of-Use gate unchanged.
 **Method:** desk review of official Internet Archive documentation (see §0 evidence log). This session's
-sandbox has no direct egress, so live header probes (CORS, byte-range, redirects on file servers) could
-not be executed — they are recorded as explicit evidence gaps (§6, §10) with a probe plan (§9.3).
+sandbox has no direct egress, so live behavior probes (playback, byte-range, redirects, codecs,
+headers) could not be executed — they are recorded as explicit evidence gaps (§5, §6, §10) with a
+probe plan (§9.3).
 **Evidence tags used throughout:** **VERIFIED** (read from an official Internet Archive source on
 2026-10-20, quoted or closely paraphrased), **INFERRED** (derived from official sources + our own design
 decisions; must be pinned by a recorded fixture before any provider code merges), **UNKNOWN** (not
 establishable this session; blocks specific claims, not the whole review), **CONTEXT** (public-record
-background, not re-verified this session).
+background, not re-verified this session), **OWNER-PROVIDED** (stated by the project owner this
+session; re-verified by the named probe before any reliance).
 
 **Review rule honored:** nothing below is invented. Where a fact could not be verified, it says
 UNKNOWN. A successful metadata lookup is **not** treated as proof of playback (§5), and an item being
@@ -37,14 +45,15 @@ indexed by archive.org is **not** treated as proof it is public domain (§1, §1
 | E13 | E1 "Lucene-like queries" reference + community knowledge | search-field vocabulary (title, creator, collection, mediatype, year, subject, downloads, identifier, language) | INFERRED — pin via fixture |
 | E14 | Solr-standard shape implied by E1/E2 | advancedsearch JSON response shape (`responseHeader`, `response.numFound/start/docs`) | INFERRED — pin via fixture |
 | E15 | E3 gives `dir` + datanode hosts (`d1`/`d2`); community knowledge | download URL forms `https://archive.org/download/{id}/{file}` and datanode file URLs; poster endpoint `https://archive.org/services/img/{id}` | INFERRED — probe |
-| E16 | — | CORS headers on archive.org API/file hosts | UNKNOWN (no egress) |
-| E17 | — | byte-range support (`Accept-Ranges: bytes`, 206 responses) on file hosts | UNKNOWN (no egress) |
-| E18 | — | HLS (`.m3u8`) availability for video items | UNKNOWN (no official doc captured) |
+| E16 | — | `Access-Control-Allow-Origin` values on archive.org file hosts — DIAGNOSTIC only: native `<video>` playback of a progressive MP4 does not generally require CORS permission (no-cors media fetch); ACAO matters for JS-fetched playback (hls.js manifest/segment requests) and `crossorigin` uses (canvas/Web Audio) | UNKNOWN (no egress) — recorded as diagnostic evidence by probe P2f |
+| E17 | — | byte-range support (`Accept-Ranges: bytes`, 206 responses) on file hosts — required for `<video>` seeking | UNKNOWN (no egress) — probe P2b |
+| E18 | — | HLS (`.m3u8`) availability for video items; note JS-based HLS playback requires CORS on manifest + segments regardless of availability | UNKNOWN (no official doc captured) |
 | E19 | — | numeric rate limits for search/metadata APIs | UNKNOWN (official guidance is qualitative only) |
 | E20 | — | current Terms-of-Use full text (archive.org/about/terms is JS-gated; Wayback snapshot redirected to a "lite" version) | UNKNOWN — open action A1 |
 | E21 | — | subtitle/caption file availability for movies | UNKNOWN (per-item only) |
 | E22 | E4 (restricted metadata classes exist) + community knowledge | lending / access-restricted items require login and must be excluded | INFERRED — pin via fixture |
 | E23 | Hachette v. Internet Archive (2nd Cir. 2024), UMG v. IA settlement | IA operates under active copyright-litigation pressure | CONTEXT — re-verify if posture changes |
+| E24 | archive.org robots.txt (owner-provided observation, 2026-10-20; re-verified by probe P1 before reliance) | visible wildcard rules disallow `/control/` and `/report/`; the API paths this provider uses (`/advancedsearch.php`, `/metadata/`, `/download/`, `/services/`) are not visibly disallowed. robots.txt is an access-policy signal, NOT a substitute for reviewing terms (R1/A1) | OWNER-PROVIDED — re-verify in P1 |
 
 ---
 
@@ -69,20 +78,34 @@ roadmap's Phase 3 build order #1 and the D3-approved initial source set. A new d
 
 **Consequence for us (design constraint, not a claim):** item-level rights status is heterogeneous
 and uploader-asserted. The provider therefore cannot rely on "it is on archive.org" as a rights
-basis. It must operate on a **curated public-domain collection allowlist** plus an item-level
-rights-field gate (e.g. skip items that carry an explicit restricted-rights marker or a
-`licenseurl` pointing at a non-open license — the exact marker fields are INFERRED, to be pinned by
-fixtures per §9). The public-domain film list IA references (E7) is itself explicitly
-no-guarantee, so it may inform curation but cannot be a sole gate.
+basis, and **a collection-level allowlist alone is NOT sufficient** — membership in a public-domain
+collection does not make every item in it public domain (IA collections mix works, and rights
+metadata is uploader-asserted of varying quality, E6/E7). The rights posture is two-layered:
+
+1. **Collection pool (necessary, not sufficient).** Curated public-domain collections bound what
+   the search layer may surface at all (exact marker fields INFERRED, pinned by fixtures per §9).
+2. **Per-item rights register (mandatory).** Only individually approved item identifiers may be
+   served. Each register entry records: the identifier; the rights evidence actually reviewed
+   (e.g. publication date/pre-copyright status, copyright-renewal research, the item's
+   `licenseurl`/CC pointer and restricted-rights markers); the concluded permission scope (e.g.
+   "public domain — no restrictions" or "CC BY — attribution as specified"); attribution
+   requirements; the review date; and the reviewer. Uploader-provided license metadata (CC logos,
+   `licenseurl`, rights fields) is **evidence to review, not an automatic guarantee** of ownership
+   or permission (E6/E7 explicitly disclaim it). The register lives in
+   `docs/evidence/ia-rights-register.md`; `load()`/`loadLinks()` must refuse any identifier absent
+   from it (defense in depth on top of search filtering). IA's referenced public-domain film list
+   (E7) is itself explicitly no-guarantee: it may inform review, never replace it.
 
 **API terms for automated access (E5, E4 — VERIFIED):** the Archive publishes a Bots/LLMs/Automated
 Access policy requiring descriptive User-Agent identification and qualitative rate-limiting
 discipline (§7), and documents public, unauthenticated read access to metadata ("most information
 returned by Metadata Read is publicly available", E4). No clause prohibiting read-only API search or
-metadata retrieval for a client application was found in the official pages captured this session;
-the full current Terms of Use could not be captured (E20) and its archived dated copy is **action
-A1** — an explicit gate in §10, mirroring the roadmap rule that ambiguity must be resolved (or the
-provider does not ship).
+metadata retrieval for a client application was found in the official pages captured this session.
+**However — and this gate is preserved — the public accessibility of an API, and its non-exclusion
+by robots.txt (E24), do NOT establish that every proposed application use is permitted.** The full
+current Terms of Use could not be captured (E20); its archived dated copy is **action A1**, and the
+ToU review — not robots.txt, not API availability — is the authority on permission (mirrors the
+roadmap rule that ambiguity must be resolved, or the provider does not ship).
 
 **Out of scope from minute one (POLICY §3 prohibitions, D7/D8):** lending / controlled-digital-lending
 items and any content requiring an archive.org account (E22), torrent/magnet delivery (excluded from
@@ -90,8 +113,8 @@ our `PlaybackLinkType` v1), and any DRM-protected item (none exists in IA public
 is stated anyway).
 
 **Tag summary for §1:** authorization category VERIFIED (D3/POLICY); terms permitting read-only API
-use INFERRED-from-official-pending-ToU-snapshot (E20 gate); content licensing per-item
-UNKNOWN-with-mitigation (curated allowlist + rights gate).
+use UNRESOLVED — pending the ToU snapshot (E20/A1 gate); content licensing per-item
+UNKNOWN-with-mitigation (collection pool + mandatory per-item rights register).
 
 ---
 
@@ -151,7 +174,7 @@ fixtures pin the exact response:
 `name`; `metadata.year` (may be a range string like "1953" / "1953-1959" — parse defensively) →
 `year`; `metadata.description` → `plot` (HTML-stripped); `metadata.collection` (string or array) →
 `tags`; `metadata.runtime` (when present, format "HH:MM:SS") → `duration` in minutes; `licenseurl` →
-rights gate (not surfaced). `dataUrl` is a **provider-internal JSON blob** `{identifier, fileName}`
+rights-register input (evidence to review per §1 — not surfaced). `dataUrl` is a **provider-internal JSON blob** `{identifier, fileName}`
 naming the chosen derivative file (opaque per contract; mirrors the upstream pattern where
 `Episode.data` may be a JSON payload — verified upstream behavior, our docs §2.2).
 
@@ -197,23 +220,41 @@ only the provider decodes it.
 **What is verified (E8, E7):** IA generates **web-friendly h.264 MP4 derivatives** for video items
 ("We will derive other file formats that are web-friendly such as h.264 mp4"), and the Archive's own
 help explicitly acknowledges that some files "simply can't be streamed" and fall back to download.
-So the officially documented playback path is **progressive MP4 (byte-range HTTP) of a derivative
-file** — which is exactly the `PlaybackLink.type: 'video'` shape our Phase 4 player maps to native
-`<video>`.
+So the officially documented playback path is **progressive MP4 of a derivative file** — exactly the
+`PlaybackLink.type: 'video'` shape our Phase 4 player maps to native `<video>`. (Byte-range support
+on the file hosts is itself NOT verified — E17, probe P2b; it is a playback prerequisite, not part
+of what IA documents.)
 
 **Direct URL form (INFERRED, E15):** `https://archive.org/download/{identifier}/{fileName}` for the
 h.264 derivative selected from `files[]`, likely 30x-redirecting to a datanode
 (`ia{NNN}.us.archive.org` names are VERIFIED as the item's `d1`/`d2`/`workable_servers` values, E3).
 
-**HLS (E18): UNKNOWN.** No official documentation of `.m3u8` playlists for item video was captured.
-The provider therefore must **not** emit `type: 'hls'` links until a probe proves otherwise; the
-initial link surface is progressive MP4 only.
+**The two playback models are different, and CORS applies differently to each:**
 
-**Browser playback: NOT VERIFIED — and explicitly not claimable yet.** Nothing this session proves:
-CORS on the file host (E16), byte-range/206 behavior (E17), or that a given item's derivative file
-is actually fetchable and decodable. A metadata 200 is metadata, not playback. Verification requires
-the §9.3 probe plus, later, a real `<video>` test in Phase 4 on recorded fixtures first and live
-files second. Until then the honest status is: **plausible (progressive MP4), unverified.**
+- **Native progressive MP4 (`PlaybackLink.type: 'video'` → `<video src>`).** A media element
+  WITHOUT the `crossorigin` attribute fetches media in *no-cors* mode: cross-origin playback of a
+  publicly accessible MP4 does **not** generally require CORS permission from the file host, and
+  `<video>` seeking issues ordinary Range requests in that same mode. CORS permission becomes
+  relevant for native playback only if the element carries `crossorigin` (needed for canvas/Web
+  Audio capture of frames/audio). This is standard HTML media-element behavior, not an
+  IA-specific fact — probe P2a verifies the HTTP-level preconditions against real IA responses
+  rather than assuming them.
+- **JavaScript-based playback (HLS via hls.js, DASH via dash.js/shaka, or any fetch/XHR-fed MSE
+  pipeline).** The manifest and every segment are fetched from JS, so each request DOES require
+  CORS permission (`Access-Control-Allow-Origin`) on the manifest and segment hosts. If IA HLS
+  ever proves available, its viability would therefore depend on ACAO evidence (E16) — unlike
+  native MP4 playback.
+
+**HLS availability (E18): UNKNOWN.** No official documentation of `.m3u8` playlists for item video
+was captured. The provider therefore must **not** emit `type: 'hls'` links until a probe proves
+otherwise; the initial link surface is progressive MP4 only.
+
+**Browser playback: NOT VERIFIED — and explicitly not claimable yet.** Nothing this session
+proves: that a derivative file is fetchable and actually decodable (P2a/P2d), byte-range/206
+seeking (P2b), the live redirect-chain shape (P2c), or that no special request headers are
+required (P2e). A metadata 200 is metadata, not playback. Verification requires the §9.3 probes
+plus, later, a real `<video>` test in Phase 4 on recorded fixtures first and live files second.
+Until then the honest status is: **plausible (progressive MP4 via native playback), unverified.**
 
 ---
 
@@ -222,10 +263,12 @@ files second. Until then the honest status is: **plausible (progressive MP4), un
 | Constraint | Finding | Tag |
 |---|---|---|
 | CORS on API hosts | unknown; does not matter for us — all IA calls run server-side through `HttpEngine` (D1/D18), CORS is irrelevant server-side | n/a (architecture) |
-| CORS on file hosts | decides whether direct `src` playback works in the browser or links must flow through the Phase 4 scoped relay (D8). **Not verified** — probe P2 | UNKNOWN |
-| Redirects | file URLs are expected to redirect (30x, possibly 307 per E10) to datanodes. Our engine follows redirects manually and re-validates every hop through the full SSRF pipeline (D18.5) — this must stay intact; datanode hosts must be inside the provider's destination allowlist (§8) | redirect existence INFERRED; our handling VERIFIED-by-tests |
-| Byte-range | `<video>` seeking requires range support on the file server (or the relay passing ranges through — Phase 4 requirement). **Not verified** — probe P2 | UNKNOWN |
-| Request headers for playback | none expected for public items (no referer/cookie documented as required for public file GETs) | INFERRED — probe |
+| CORS on file hosts | **diagnostic, not a gate for native playback.** A plain cross-origin `<video src>` (no `crossorigin` attribute) plays a publicly accessible progressive MP4 without requiring `Access-Control-Allow-Origin` (standard no-cors media-element behavior; probe P2a confirms HTTP-level preconditions on real IA responses). ACAO on file hosts matters only for (a) JS-fetched playback (hls.js/DASH manifest+segment requests) and (b) `crossorigin` uses (canvas/Web Audio). Probe P2f RECORDS ACAO values as diagnostic evidence for those future options; its absence must never be read as "MP4 playback fails" | native model: standard spec behavior INFERRED until P2a; IA ACAO values UNKNOWN (P2f) |
+| Native playback fetchability | whether a derivative file serves a normal 2xx media response a `<video>` element can consume (`Content-Type`, `Content-Length`, no auth wall) — tested as its own behavior | UNKNOWN — probe P2a |
+| Redirects | file URLs are expected to redirect (30x, possibly 307 per E10) to datanodes — tested as its own behavior (chain shape, methods, hosts). Our engine follows redirects manually and re-validates every hop through the full SSRF pipeline (D18.5) — this must stay intact; datanode hosts must be inside the provider's destination allowlist (§8) | redirect existence INFERRED; our handling VERIFIED-by-tests; live chain shape UNKNOWN — probe P2c |
+| Byte-range seeking | `<video>` seeking requires range support on the file server (or the relay passing ranges through — Phase 4 requirement) — tested as its own behavior: `Accept-Ranges` advertisement, then a real `Range` request → 206 with the correct byte window | UNKNOWN — probe P2b |
+| Codec/container sanity | a `.mp4` file NAME is not proof of a playable codec; IA warns some items cannot stream at all (E7). Probe P2d reads the first byte range and confirms an MP4/ISO-BMFF container (`ftyp`) | UNKNOWN — probe P2d |
+| Request headers for playback | whether the file URL requires any special headers (referer/cookie/UA beyond a plain GET) — tested as its own behavior: plain unauthenticated GET with our identified UA must succeed | INFERRED (none expected) — probe P2e |
 | Response headers for logs | engine events already carry origin+path only, never query strings or headers (D19) — keep | our guarantee |
 | Subtitles | no official statement that movies ship captions; `files[]` is the only per-item source (E21 UNKNOWN). Provider emits `SubtitleFile` only when a `.srt`/`.vtt` entry actually exists in the fixture; otherwise none. No caption fabrication | UNKNOWN (per-item) |
 | Mixed codecs | IA warns some items cannot stream at all (E7); `loadLinks` must treat missing/unusable derivative as "no links" (handled = true, zero emissions), never invent a URL | VERIFIED (caution) |
@@ -266,7 +309,7 @@ be big, so the provider reads via the parse toolkit's size caps rather than unbo
 | HTTP 429 (+ `Retry-After`) | treated as rate-limited: fail with `'provider'` + backoff at caller level; engine does not auto-retry (documented) |
 | HTTP 5xx / network faults | engine `HttpFailureKind` `'networkError'`/`'dnsFailure'` → host failure kinds `'provider'`/`'timeout'` respectively by the existing host classification |
 | Timeout / caller abort | `'timeout'` / `'aborted'` (host-owned, D13) |
-| Robots-gated path | `'robotsDisallowed'` (D18.9) — note the engine's fail-closed posture on robots fetch failure; robots.txt for the API paths is itself a probe item (P1) |
+| Robots-gated path | `'robotsDisallowed'` (D18.9) — engine stays fail-closed on robots fetch failure. Current robots.txt finding (E24, owner-provided): visible wildcard rules disallow `/control/` and `/report/`; the API paths this provider uses are not visibly disallowed — to be RE-VERIFIED for our UA group in probe P1. robots.txt is not a substitute for the ToU review (§1, R1) |
 | Schema drift (IA changes shape) | Zod failure → `'validation'`, item dropped and counted (D12) — observability events make drift visible |
 
 ---
@@ -281,12 +324,14 @@ be big, so the provider reads via the parse toolkit's size caps rather than unbo
    login cookies (E4 describes both — we deliberately use neither). The D19 cross-user cache rule
    is retained as defense-in-depth.
 3. **Never fetched:** lending / access-restricted items (E22) — enforced at query level (curated
-   collections) AND item level (metadata gate); anything requiring login; the S3-like write API and
+   collection pools) AND item level (rights register §1 + metadata gate); identifiers absent from
+   the per-item rights register; anything requiring login; the S3-like write API and
    Tasks API (E10/E12 — read/write surfaces we do not use); `.torrent`/magnet files; user-supplied
    URLs of any kind (the engine still accepts no client-controlled URLs — D18.1).
-4. **No media relay in Phase 3.** If the CORS probe (P2) shows file hosts do not allow cross-origin
-   playback, the answer is Phase 4's authenticated, quota-capped relay (D8) — not an ad-hoc proxy
-   now, and never an open one.
+4. **No media relay in Phase 3.** Native `<video>` playback of public progressive MP4 is expected
+   NOT to need a relay (§5); the Phase 4 authenticated, quota-capped relay (D8) remains the
+   fallback for constrained sources (headers/CORS-dependent JS playback), never an open proxy,
+   and is not built now.
 5. **No execution of anything extracted** (D19): descriptions, page HTML, file names are DATA. The
    parse toolkit and static packer decoder are already the only processing paths; IA needs no
    unpacker at all (its APIs are JSON) — nothing in this provider may introduce `eval`/`new
@@ -306,8 +351,8 @@ be big, so the provider reads via the parse toolkit's size caps rather than unbo
 Probe capture of real payloads, sanitized (nothing user-specific exists in these APIs), one file
 per case under `tests/fixtures/ia/`:
 
-1. `search-success.json` — advancedsearch output for a pinned query in a curated public-domain
-   collection (3 rows, fields per §3).
+1. `search-success.json` — advancedsearch output for a pinned query in a curated collection pool
+   (3 rows, fields per §3).
 2. `search-empty.json` — valid query, zero hits (`numFound: 0`).
 3. `search-error.json` — malformed `q` (documented IA error shape; capture, don't assume).
 4. `metadata-success.json` — full metadata for ONE pinned identifier with h.264 derivative files.
@@ -322,16 +367,38 @@ per case under `tests/fixtures/ia/`:
 page budget; `load()` → `MovieLoadResponse` incl. year-range parsing and HTML-stripped description;
 `loadLinks()` → derivative selection (h.264 preference, size sanity), quality inference,
 zero-links-when-no-derivative, subtitle emission only when present; restricted-item rejection;
+**rights-register enforcement (an identifier absent from the register ⇒ `load()` returns `null`
+and `loadLinks()` emits nothing, even with valid-looking metadata)**;
 metadata-`[]` → `null`; error/429 mapping per §7; pipeline interplay (dedupe/sort/cache) with the
 existing D19 semantics; kill-switch refusal (`ProviderDisabledError`); redaction checks (no IA URL
 query strings in events beyond the redacted fields).
 
 **9.3 Live probe script (a research tool, NOT provider code — run once, output recorded into this
-checklist's addendum).** P1: `GET https://archive.org/robots.txt` — verify `/advancedsearch.php`,
-`/metadata/`, `/download/` paths for our UA group. P2: header probe on a pinned file URL — status,
-`Content-Type`, `Accept-Ranges`, a real `Range` request (expect 206), redirect chain + final host,
-`Access-Control-Allow-Origin` presence. P3: fetch one h.264 byte range and confirm decodable MP4
-header bytes. P4: dated Terms-of-Use snapshot archived into `docs/evidence/` (resolves E20/A1).
+checklist's addendum).** Each expected playback behavior is tested SEPARATELY; a pass in one does
+not imply a pass in another. `Access-Control-Allow-Origin` is recorded as diagnostic evidence
+(P2f) and is never a universal pass/fail condition for native video.
+
+- **P1 — robots.txt:** re-fetch `https://archive.org/robots.txt` and record the rules applying to
+  our UA group for the paths this provider uses (`/advancedsearch.php`, `/metadata/`,
+  `/download/`, `/services/`), confirming or correcting E24. robots.txt informs access posture;
+  it does not replace the ToU review (P3).
+- **P2a — native playback fetchability:** plain GET of one pinned derivative URL — status,
+  `Content-Type`, `Content-Length`, no auth wall. (Browser-level confirmation is a Phase 4
+  `<video>` test on fixtures first; P2a establishes the HTTP-level preconditions.)
+- **P2b — byte-range seeking:** `Accept-Ranges` advertisement, then a real `Range` request
+  (expect 206 with the correct byte window), plus a mid-file range (seek semantics).
+- **P2c — redirect chain:** record every hop of the download URL (statuses, methods, hosts); the
+  final host must fit the §8 datanode allowlist.
+- **P2d — codec/container sanity:** the first byte range must show an MP4/ISO-BMFF container
+  (`ftyp` box); a `.mp4` name alone proves nothing.
+- **P2e — required-headers absence:** a plain unauthenticated GET with our identified UA must
+  succeed with no referer/cookie/other special headers.
+- **P2f — ACAO diagnostic:** record `Access-Control-Allow-Origin` (and `Timing-Allow-Origin` if
+  present) on the file host. Diagnostic ONLY — it feeds future JS-based playback decisions (§5);
+  its absence is not a native-playback failure.
+- **P3 — Terms of Use snapshot:** dated copy archived into `docs/evidence/` (resolves E20/A1);
+  the read-only-use clauses are then reviewed explicitly.
+
 No probe runs before owner approval of this checklist.
 
 ---
@@ -342,13 +409,13 @@ No probe runs before owner approval of this checklist.
 
 | # | Risk / gap | Severity | Mitigation | Stop condition |
 |---|---|---|---|---|
-| R1 | Terms of Use full text not archived (E20/A1) — roadmap requires dated archived terms; ambiguity ⇒ do not ship | High | P4 probe archives a dated copy; re-read automated-access clauses | If ToU prohibits our read-only use ambiguously/unfavorably ⇒ provider does not ship (POLICY §3.4) |
-| R2 | No per-item rights guarantee from IA (E6/E7) — indexed ≠ public domain | High | Curated collection allowlist + metadata rights gate + attribution honoring; never treat presence in a PD list as proof | Any curated collection shows systemic mis-asserted rights ⇒ remove collection |
+| R1 | Terms of Use full text not archived (E20/A1) — roadmap requires dated archived terms; API publicness and robots non-exclusion (E24) do NOT establish permission; ambiguity ⇒ do not ship | High | P3 probe archives a dated copy; automated-access clauses then reviewed explicitly | If ToU prohibits our read-only use ambiguously/unfavorably ⇒ provider does not ship (POLICY §3.4) |
+| R2 | No per-item rights guarantee from IA (E6/E7) — indexed ≠ public domain; collection membership ≠ item rights | High | Two-layer gate: collection pools (search) + mandatory per-item rights register (identifier, reviewed evidence, permission scope, attribution requirements, review date, reviewer); uploader metadata treated as evidence to review, never as automatic guarantee; register enforced in `load`/`loadLinks` | Item without a register entry ⇒ not served. A register entry's rights evidence invalidated on re-review ⇒ entry removed |
 | R3 | Numeric rate limits unpublished (E19) | Medium | Conservative pacing + 429/Retry-After honoring + caches (E5 discipline); observability tracks 429 events | Repeated 429s despite pacing ⇒ throttle further or suspend provider |
-| R4 | Playback unverified (E16–E18): CORS/range/HLS unknown | Medium | Probes P2/P3 gate any playback claim; provider emits progressive MP4 only; relay is the Phase 4 answer | If ranges/CORS + relay plan cannot support seeking, keep provider read-only until Phase 4 |
+| R4 | Playback unverified (E16–E18): fetchability, range/seek, redirects, codecs, headers and HLS each unproven on real IA responses | Medium | Separate probes P2a–P2f gate each claim (ACAO is diagnostic, not the gate for native playback); provider emits progressive MP4 only; Phase 4 relay remains the fallback for constrained sources | Any of P2a/P2b/P2d failing on pinned files ⇒ no playback claim; keep provider read-only until Phase 4 |
 | R5 | IA availability/instability (DDoS history, ongoing litigation climate — E23 CONTEXT) | Medium | Engine timeouts + caches degrade gracefully; provider failure is isolated by host error boundary (D13); kill switch | Sustained outage ⇒ provider reports failure; no code change |
 | R6 | Fixture drift — IA explicitly gives "no absolute guarantee that every item will be returned, or that every item returned will remain" (E2) | Medium | Fixtures pinned to committed files (no live calls in tests); optional opt-in live smoke run separately | — |
-| R7 | robots.txt posture for API paths unknown (P1) | Low | Engine's robots gate is fail-closed already; probe before integration | If a needed path is disallowed for our UA ⇒ do not fetch that path; renegotiate approach |
+| R7 | robots.txt posture: visible wildcard rules disallow `/control/` and `/report/` only (E24, owner-provided); rules for our UA group on the API paths still need re-verification | Low | Engine's robots gate is fail-closed already; P1 re-verifies E24 before integration | If a needed path is disallowed for our UA ⇒ do not fetch that path; renegotiate approach |
 | R8 | Scope creep into lending/CDL or "borrowable" content | High | §8 item 3 hard exclusion; D20 records it | None — hard no (POLICY §3) |
 
 **Exit criteria (extends roadmap Phase 3 exit for this provider):** (a) this checklist + probe
@@ -357,23 +424,32 @@ addendum approved and recorded as D20; (b) fixtures 1–8 captured and committed
 collection in the UI-less API layer with kill-switch wired; (e) takedown/abuse contact decision
 revisited before any deployment beyond private operator use (POLICY §6).
 
-**Recommendation: CONDITIONAL GO.** The Internet Archive provider is the lowest-legal-risk option
-in the approved Phase 3 set (D3 explicitly names it), the officially documented API surface covers
-every method of our contract, and our Phase 2 machinery (engine/guard, parse toolkit, link
-pipeline, observability/kill-switch) matches its needs without new security surfaces. Proceed only
-after: (1) owner approves this checklist, (2) probe P4 resolves the Terms-of-Use archival gate
-(A1/R1), (3) D20 records the collection allowlist, pacing values, and the no-HLS claim. Playback
-claims remain OFF until P2/P3 evidence exists.
+**Recommendation: CONDITIONAL GO (direction unchanged, conditions tightened).** The Internet
+Archive provider is the lowest-legal-risk option in the approved Phase 3 set (D3 explicitly names
+it), the officially documented API surface covers every method of our contract, and our Phase 2
+machinery (engine/guard, parse toolkit, link pipeline, observability/kill-switch) matches its
+needs without new security surfaces. Proceed only after: (1) the owner approves THIS revision of
+the checklist, (2) probe P3 resolves the Terms-of-Use archival gate (A1/R1), (3) D20 records the
+collection pools, the per-item rights-register requirement with its initial entries, the pacing
+values, and the no-HLS claim. Playback claims remain OFF until P2a–P2f evidence exists. Approval
+of this checklist is review approval only — it does not itself authorize provider implementation;
+that authorization is D20's, recorded separately by the owner.
 
 ---
 
 ## 11. Decision requested (D20 — draft for owner)
 
-**D20 — Phase 3 authorization: Internet Archive reference provider (conditional).**
+**D20 — Phase 3 authorization: Internet Archive reference provider (conditional; NOT yet adopted).**
 Authorize implementation of the IA provider under: content categories POLICY §3.1/§3.2 only;
-curated public-domain collection allowlist recorded in-repo; anonymous read-only API use;
-progressive-MP4-only links until evidence supports more; conservative pacing + identified
-User-Agent; fixtures-first testing; kill-switch mandatory; no lending/authenticated/torrent/DRM
-surfaces; no media relay in Phase 3. Superseded only by a new explicit decision.
+collection pools recorded in-repo PLUS a mandatory per-item rights register (individually approved
+identifiers with reviewed rights evidence, concluded permission scope, attribution requirements,
+review date, reviewer — uploader-provided license metadata counts only as evidence to review);
+anonymous read-only API use with the ToU gate (A1/R1) still open; progressive-MP4-only links
+until P2a–P2f evidence supports more (ACAO diagnostic only); conservative pacing + identified
+User-Agent; robots posture re-verified (P1/E24); fixtures-first testing; kill-switch mandatory;
+no lending/authenticated/torrent/DRM surfaces; no media relay in Phase 3. Superseded only by a
+new explicit decision. Adopting D20 is the ONLY act that authorizes implementation; checklist
+approval alone does not.
 
-*This document is review output only — no implementation files were modified.*
+*This document is review output only — no implementation files were modified, no probes were run,
+and no provider code exists.*
