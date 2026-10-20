@@ -339,6 +339,82 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
      complete against exotic vectors (e.g. HTTP/2 connect-style abuse, 0-RTT reuse across engines,
      TIME_WAIT hijacking on multi-user hosts).
 
+## D19 — Phase 2 steps 3–5: parse toolkit (NO JS execution), link pipeline, observability
+
+- **Status:** Adopted (Phase 2 steps 3–5, implemented in `src/server/parse/`, `src/server/links/`, `src/server/obs/`)
+- **Context:** Roadmap Phase 2 tasks 3–5. The original roadmap wording suggested a
+  `node:vm`-sandboxed snippet runner "for Rhino-style de-obfuscation". The owner instruction of
+  2026-10-20 revised this explicitly: **do not execute extracted JavaScript** — no `eval`, no
+  `new Function`, no `node:vm` as a security boundary (Node's own documentation warns that `vm`
+  is not a security mechanism). Providers are first-party code (D6); page content is untrusted
+  data and stays data.
+- **Decision:**
+  1. **Parse toolkit** (`src/server/parse/`): cheerio-based HTML helpers with input caps and
+     never-throwing typed results (text/attributes, absolutized `<a href>` links — non-http(s)
+     targets are never resolved — and bounded metadata); size-capped `JSON.parse` + one-shot
+     parse-and-Zod-validate reusing the Phase 1 boundary schemas (D12).
+  2. **`p/a/c/k/e` unpacker** (`parse/packer.ts`): a deterministic, first-party decoder for the
+     widely documented Dean-Edwards-packer format — a PURE STATIC STRING TRANSFORM. It parses
+     only the call's ARGUMENTS (payload, radix, count, `'|'`-separated dictionary, including the
+     canonical `'<keys>'.split('|')` form) and substitutes radix-encoded tokens (2–62,
+     `0-9a-zA-Z`, matching the canonical `e(c)` decoder) under word boundaries with a replacer
+     FUNCTION (so `$`-patterns in dictionary values cannot corrupt output). It never parses the
+     surrounding script as code and never evaluates anything. Typed failures for `notPacked`,
+     `tooLarge`, `malformed`, `unsupportedRadix`; it never throws on hostile input.
+  3. **Link pipeline** (`src/server/links/`): `LinkPipeline` re-validates every
+     `PlaybackLink`/`SubtitleFile` against the Phase 1 schemas (drop-and-count, D12), reuses the
+     core helpers (`dedupeLinks` first-wins, `sortLinksByQualityDesc` stable/unknown-last) and
+     adds subtitle dedupe by NORMALIZED (language, url) — language trimmed + case-folded (BCP-47
+     tags are case-insensitive; a deliberate, documented extension over the collector's exact-key
+     dedupe), URL trimmed only (paths are case-sensitive). Results are cached in a bounded TTL
+     cache keyed `(scope, providerName, episodeId)` with single-flight de-duplication; the
+     default TTL (20 min) mirrors the verified upstream link cache (`RepoLinkGenerator.kt:73`).
+     **Cross-user protection:** links carrying credential-bearing headers
+     (`authorization`, cookies, API-token headers — name-based, case-insensitive) are NEVER
+     cached under the default `shared` scope; they are cached only when the caller passes an
+     explicit per-user scope, so credentialed playback results cannot leak across users.
+     `TtlCache` gained a read-only additive `keys()` snapshot to support per-provider
+     invalidation; no other engine/cache behavior changed.
+  4. **Observability** (`src/server/obs/`): structured provider-call events (start/end with
+     injectable-clock durations, outcome `success|failure|skipped`, failure kinds =
+     `ProviderFailureKind` + `killed`), engine-event forwarding, and `wrapProvider` — the
+     enforcement wrapper that checks the kill switch BEFORE every method call (refused calls
+     throw the typed `ProviderDisabledError` and the provider is NOT invoked), classifies
+     outcomes, and rethrows original errors unchanged. Redaction: header values via the engine's
+     `redactHeadersForLog`; `redactUrlForLog` drops userinfo + fragments and value-redacts a
+     denylist of sensitive query-parameter names; `redactEventMessage` re-redacts URLs inside
+     free text and caps length; argument values and response bodies are absent from event shapes
+     by construction. Health: `ProviderHealthTracker` with `idle → ok → degraded (≥1
+     consecutive failure) → down (≥3)` plus `disabled` from the kill switch, counts/durations
+     only (no payloads), deterministic snapshots, and the future `GET /api/providers/health`
+     response contract pinned as Zod schemas (`ProviderHealthSnapshotSchema`) and self-validated
+     in tests. Kill switch: in-memory per-provider + global switch with reasons, mirroring the
+     upstream `SitePlugin.status` pattern (`RepositoryManager.kt:50–78`).
+  5. **No HTTP surface in this phase.** No admin endpoint, no health endpoint, no unauthenticated
+     management interface — the health API contract is a documented schema for the future
+     authenticated server (POLICY.md §2 gate). No media relay (Phase 4), no real providers
+     (Phase 3), no client-controlled URLs fed to the engine (D18 unchanged).
+- **Deferred work (explicit):** general JavaScript execution for providers that legitimately
+  require it (e.g. non-packer de-obfuscation) is NOT built. When a provider needs it, it
+  requires a separately isolated runtime (WASM/QuickJS-class isolation or a dedicated process
+  with capability grants) plus a security review — recorded as a gate on D6-F, not resolvable by
+  implementation drift.
+- **Consequences / limitations (explicit):**
+  1. The unpacker covers the canonical algorithm (radix 2–62, common string escapes); exotic
+     variants (radix > 62, self-modifying `e`/`d` bodies, non-canonical dictionaries) fail as
+     typed errors or decode partially — the output is DATA, and callers must treat it as
+     untrusted text, never as something to run.
+  2. Log redaction is NAME-based (fixed denylists for headers and query params); a credential
+     hidden under an unlisted non-standard parameter name could still appear in the narrow
+     fields that carry URLs. Structural mitigation: provider-call events carry only
+     provider/method/duration/outcome; URLs appear only in explicitly redacted fields.
+  3. Health tracking and the kill switch are in-memory: state resets on restart, and nothing is
+     shared across processes; the future API layer must re-apply operator policy on boot.
+  4. The pipeline cache is per-instance memory; two processes never share resolved links, and
+     credentialed results are isolated by scope — but scope VALUES are caller-supplied
+     identifiers; the future server must map them to authenticated users.
+  5. cheerio (^1.1) was added as the only new dependency (MIT; recorded per POLICY.md §6).
+
 ---
 
 ## Open future decisions (summary)

@@ -91,3 +91,41 @@ Work Log:
 Stage Summary:
 - Phase 2 steps 1-2 complete: HttpEngine + GuardedDnsResolver + guard + cookies + headers + cache + robots, all behavior pinned by tests. SSRF posture: fail-closed everywhere, single validated-DNS source of truth shared by validation and connection, explicit approvals for operator LAN hosts.
 - Exact next task: Phase 2 steps 3-5 — HTML/JSON toolkit (cheerio/p.a.c.k.e/vm sandbox), link pipeline TTL cache (reuse core/links + TtlCache), observability (redacted event logging, health shape, provider kill-switch flag). Then Phase 3 review gate before any real provider.
+
+---
+Task ID: 5
+Agent: main (Z.ai)
+Task: Push ALL project work to https://github.com/smithP2007/CLOUDSTREAM so a future AI session can continue from the repo alone.
+
+Work Log:
+- Verified green before push: vitest 187/187, tsc --noEmit clean, eslint clean, build clean (all run live).
+- Discovered workspace git root is /home/z/my-project (monorepo) whose history contains research/ (49MB upstream clones incl. closed-source AniKoto artifacts), .env (DATABASE_URL secret), tool-results/ — none of these may be redistributed.
+- Wrote handoff materials into the project: HANDOFF.md (AI continuation guide: rules, reading order, state, exact next task = Phase 2 steps 3-5, D17/D18 gotchas, worklog protocol), docs/worklog.md (full worklog copy + SHA note), .gitignore (node_modules/.env protection).
+- Committed 6077e12 in workspace repo, then `git subtree split -P download/cloudstream-web -b github-export` → clean 6-commit history with project at root (no upstream code, no secrets).
+- Pushed github-export → main on github.com/smithP2007/CLOUDSTREAM using the user's PAT inline (not stored in git config); verified ls-remote main = 822f52e (handoff tip).
+- Secret-scanned pushed history: no PAT, no DATABASE_URL. Added remote `cloudstream` (clean URL) for future pushes: `git push cloudstream github-export:main` after re-splitting.
+
+Stage Summary:
+- GitHub repo smithP2007/CLOUDSTREAM main = 822f52e, 104 files, full readable history (Phase 1, Task A/D17, Task B/D18, handoff).
+- Excluded by policy: research/ clones, AniKoto binary, .env, tool-results/.
+- Next AI entry point: HANDOFF.md → POLICY.md → docs/decisions.md (D1-D18) → roadmap (Phase 2 steps 3-5: HTML/JSON toolkit, link pipeline, observability) → Phase 3 review gate requires user approval.
+
+---
+Task ID: 6
+Agent: main (Z.ai)
+Task: Implement Phase 2 steps 3-5 (parse toolkit, link pipeline, observability) per the owner's revised instructions: NO JavaScript execution (no eval/new Function/node:vm), pure static p.a.c.k.e decoder, kill-switch + health primitives without any HTTP surface. Then verify, document, and push to GitHub.
+
+Work Log:
+- Re-grounded in POLICY.md, decisions.md (D16-D18), roadmap, engine event API (HttpEngineEvent: origin+path only), ProviderFailureKind, redactHeadersForLog, TtlCache, LinkCollection shapes before writing code. cheerio ^1.2.0 installed (only new dependency, MIT).
+- src/server/parse/html.ts: size-capped (2 MiB default) never-throwing cheerio parse; extractText/AllText/Attribute; extractLinks with absolutization (non-http(s) targets -> url null, raw href kept); bounded extractMetadata (title/description/canonical/og:, MAX_META_ENTRIES=64).
+- src/server/parse/json.ts: parseJsonSafe (empty/tooLarge/invalid typed errors) + parseJsonWith (schema-validated one-shot) + formatZodIssues matching host issue formatting.
+- src/server/parse/packer.ts: pure static p/a/c/k/e decoder — argument splitter with string/escape/depth tracking, canonical .split('|') keys form, JS string-literal unescaping, radix 2-62 (0-9a-zA-Z = canonical e(c) mapping), word-boundary substitution via replacer FUNCTION ($-pattern safety), typed failures (notPacked/tooLarge/malformed/unsupportedRadix), count cap 200k. ZERO evaluation anywhere; grep-verified no eval/new Function/node:vm/require in src/.
+- src/server/links/pipeline.ts: normalizeLinkCollection (schema re-validation drop-and-count, reuses core dedupeLinks + sortLinksByQualityDesc, subtitle dedupe by normalized language+URL), LinkPipeline (bounded TTL cache per (scope, provider, episode), single-flight, failures never cached, TtlCache.keys() additive), credential-bearing links (authorization/cookie/api-token header names) NEVER cached under shared scope — only explicit per-user scopes; default TTL 20 min mirrors RepoLinkGenerator.kt:73.
+- src/server/obs/: redact.ts (redactUrlForLog — userinfo dropped, sensitive query params value-redacted, fragment dropped; redactEventMessage caps+re-redacts; reuses engine header redactor), kill-switch.ts (per-provider + global, reasons, deterministic snapshot), events.ts (ProviderCallLogger start/end with injectable clock, engine-event forwarding, wrapProvider — kill-switch checked before EVERY call, refused calls throw typed ProviderDisabledError with outcome skipped/killed and provider NOT invoked; failures classified timeout/aborted/validation/provider and rethrown original), health.ts (ProviderHealthTracker idle/ok/degraded/down/disabled + future GET /api/providers/health contract as Zod schemas, self-validated in tests).
+- Tests: 80 new (html 12, json 10, packer 19 incl. hand-written vectors + test-only pack inverse, link-pipeline 16 incl. single-flight/TTL/LRU/eviction/credential-scope, observability 23). Fixed during testing: single-flight deadlock in test (gate release order), extractAllText selector semantics, dropped-count arithmetic, Provider ctx arity, duplicate event array bug.
+- Docs: D19 recorded (NO-JS-execution posture, unpacker limits, credential-scope rule, redaction name-based limitation, deferred JS runtime gated on D6-F); roadmap Phase 2 -> complete + step 3 revision note + exact-next-task replaced by the Phase 3 pre-flight inspection checklist (provider authorization, service terms, data contracts, expected responses, playback compatibility, rate limits, unresolved risks) with an explicit STOP gate; README + HANDOFF.md updated (267 tests, new modules, Phase 3 gate).
+- Security review: engine/guard/DNS/robots/cookies untouched except additive TtlCache.keys(); no client-controlled URLs reach the engine; no media relay; no real providers; no admin/health HTTP surface (schemas only). Verification (actual): vitest 267/267, tsc --noEmit clean, eslint clean, build clean.
+
+Stage Summary:
+- Phase 2 is fully complete (steps 1-5). No JS execution exists in the project; the only new dependency is cheerio.
+- Exact next task: present the Phase 3 pre-flight inspection checklist for the first candidate provider (recommended: Internet Archive) and STOP for owner review before any provider implementation (roadmap gate; POLICY.md §3).
