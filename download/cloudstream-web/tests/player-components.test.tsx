@@ -5,10 +5,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MediaPlayer } from '../src/player/MediaPlayer';
+import { PlaybackError } from '../src/player/errors';
 import { LocalFilePicker } from '../src/player/LocalFilePicker';
 import { SourceSelector } from '../src/player/SourceSelector';
 import { SubtitleSelector } from '../src/player/SubtitleSelector';
@@ -135,13 +136,17 @@ describe('PlaylistPanel', () => {
       <PlaylistPanel items={items} currentIndex={0} onSelect={onSelect} onRemove={onRemove} onClear={onClear} />,
     );
     expect(screen.getByText('movie.mp4')).toBeTruthy();
-    expect(screen.getByText('28 KiB')).toBeTruthy();
+    // 28108 bytes = 27.45 KiB -> the formatter rounds to "27 KiB" (binary units).
+    expect(screen.getByText('27 KiB')).toBeTruthy();
     expect(screen.getByText('needs conversion -> MP4 (H.264 + AAC)')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Remove clip.avi/ }));
     expect(onRemove).toHaveBeenCalledWith('b');
     fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
     expect(onClear).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('listitem', { name: undefined }).getAttribute('aria-current')).toBe('true');
+    const listItems = screen.getAllByRole('listitem');
+    expect(listItems.length).toBe(2);
+    expect(listItems[0]?.getAttribute('aria-current')).toBe('true');
+    expect(listItems[1]?.getAttribute('aria-current')).toBeNull();
   });
 });
 
@@ -216,7 +221,9 @@ describe('ConversionPanel', () => {
     const user = userEvent.setup();
     const gate = deferred<never>();
     const convert = vi.fn((_file: Blob, hooks: { signal?: AbortSignal }) => {
-      hooks.signal?.addEventListener('abort', () => gate.reject(new Error('aborted')));
+      // The REAL engine rejects cancellation with the typed PlaybackError('aborted')
+      // (see ffmpegConversion.ts toConversionError); the fake must match that contract.
+      hooks.signal?.addEventListener('abort', () => gate.reject(new PlaybackError('aborted')));
       return gate.promise as never as Promise<{ blob: Blob; outputName: string; durationMs: number }>;
     });
     render(
@@ -272,10 +279,13 @@ describe('MediaPlayer (integration smoke, fake engines)', () => {
       </StrictMode>,
     );
     expect(screen.getByTestId('csw-video')).toBeTruthy();
-    expect(screen.getByText('Fixture MP4 · 180p')).toBeTruthy();
+    // The same label legitimately appears in the source selector AND the playlist;
+    // assert per surface instead of document-wide.
+    expect(screen.getByRole('option', { name: /Fixture MP4 · 180p/ })).toBeTruthy();
+    const playlist = screen.getByRole('region', { name: 'Playlist' });
     // StrictMode remounts must not duplicate playlist entries.
-    await waitFor(() => expect(screen.getAllByText('Fixture MP4 · 180p').length).toBe(1));
-    expect(screen.getByText(/Gated HLS · 1080p/)).toBeTruthy();
+    await waitFor(() => expect(within(playlist).getAllByText('Fixture MP4 · 180p').length).toBe(1));
+    expect(screen.getByRole('option', { name: /Gated HLS · 1080p/ })).toBeTruthy();
   });
 
   it('adds a local file through the picker and lists it in the playlist', async () => {
