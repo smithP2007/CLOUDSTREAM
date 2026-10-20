@@ -230,3 +230,23 @@ Stage Summary:
 - Gates preserved: D20 un-adopted; no relay; SSRF/redirect/cache-scope/kill-switch machinery reused, never bypassed; no upstream code.
 - Remaining (recorded, not resolved): CSP/security headers absent (deployment-requirements.md), no SRI on the CDN core fallback, MKV/MOV conversion + CDN-path runs still manual items, kill-switch admin surface still future work.
 - Stopped for owner review as instructed.
+
+---
+Task ID: 13
+Agent: main (Z.ai)
+Task: "Do the next thing" — the roadmap's remaining implementation steps are all gated (D20/D8), so the next non-gated thing per the roadmap was closing the recorded deployment-requirements gaps (CSP §2, CDN-core SRI §3, notices/sha tooling §1). Decision D25.
+
+Work Log:
+- Roadmap check: "exact next implementation task" is STOP-gated on D20/D8 owner decisions; deployment-requirements.md is the authoritative non-gated queue — chosen as the task.
+- CSP + security headers (§2): pure builder src/app/_lib/securityHeaders.ts (single definition, unit-tested, catalog↔CSP host-sync pinned by test), wired via next.config.ts headers() for pages AND API; prod/dev aware (unsafe-eval + ws: provably absent in production).
+- Empirical CSP hardening (each verified, not assumed): media-src blob: REQUIRED for MSE (without it the Mux HLS e2e fails with a media-src violation); script-src/connect-src blob: REQUIRED for the conversion worker's import(coreURL)/fetch(wasmURL) of origin-created blob URLs (without it requestfailed: csp); wasm-unsafe-eval for ffmpeg.wasm; unsafe-inline stays as the recorded Next.js limitation (nonce-CSP follow-up).
+- Core integrity (§3 + engine): src/player/conversion/coreIntegrity.ts — both core artifacts fetched as bytes, SHA-256 verified against pinned-core-hashes.json (= Task 11 audit digests, re-verified against the installed artifact; all six on-disk copies match) BEFORE instantiation; fail-closed new typed error conversion-core-integrity; verified blob URLs revoked after load; coreIntegrity:false preserves the audited legacy path.
+- Notices + tooling (§1 partly): notices/GPL-2.0.txt (verbatim SPDX copy), notices/THIRD-PARTY-NOTICES.md (conversion stack; full NOTICE audit stays Phase 7/D15-F), fixtures:web stages NOTICES.txt beside the served wrapper copies, npm run verify:core (scripts/verify-ffmpeg-core.mjs).
+- Docs: deployment-requirements.md §1–§3 updated with DONE/REMAINING states + evidence; decision D25; media-compatibility.md §5 D25 note; HANDOFF.md, README, root README counts/status.
+- Battery (actual): vitest 410/410 (24 files; +9 integrity, +6 security-headers), tsc clean, eslint clean, library build clean, next build clean, app e2e 22/22 vs PRODUCTION build under the production CSP (incl. NEW conversion.spec.ts: REAL AVI→MP4 conversion on the watch page + zero CSP violations + zero uploads), demo e2e 6/6 (REAL conversion + cancellation/recovery through the verified path), verify:core 6/6 artifacts match.
+
+Stage Summary:
+- D25 landed: CSP + security headers everywhere, integrity-verified core loading (default ON), notices packaging + verify:core tooling. Conversion stack unchanged for the demo path; new app-path conversion e2e proves the product surface under CSP.
+- Gates untouched: D20 (Phase 3), D8 (relay), D18/D19 machinery; no upstream code.
+- Remaining honestly open: operator GPL complete-corresponding-source offer (deployment-requirements §1), nonce-based CSP follow-up, Phase 7 full NOTICE audit, MKV/MOV CDN-path manual items.
+- Stopped for owner review.

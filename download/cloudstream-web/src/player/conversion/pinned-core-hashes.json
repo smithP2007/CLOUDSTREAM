@@ -1,0 +1,9 @@
+{
+  "version": "0.12.10",
+  "build": "esm",
+  "source": "npm @ffmpeg/core@0.12.10, dist/esm — digests re-verified against the installed artifact (2026-10-20, matches docs/media-compatibility.md §5)",
+  "sha256": {
+    "ffmpeg-core.js": "67a48f11645f85439f3fde4f2119042c16b374b910206b7a7a24f342e28dcae3",
+    "ffmpeg-core.wasm": "9f57947a5bd530d8f00c5b3f2cb2a3492faa7e5d823315342d6a8656d0a6b7b7"
+  }
+}

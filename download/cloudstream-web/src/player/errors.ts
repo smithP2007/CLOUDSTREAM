@@ -29,6 +29,8 @@ export type PlaybackErrorCode =
   | 'conversion-too-large'
   /** Conversion engine cannot run in this environment (no worker/WASM). */
   | 'conversion-unavailable'
+  /** The fetched conversion core failed its pinned SHA-256 integrity check (D25). */
+  | 'conversion-core-integrity'
   /** Anything not covered above. */
   | 'unknown';
 
@@ -45,6 +47,7 @@ const CODE_MESSAGES: Readonly<Record<PlaybackErrorCode, string>> = {
   'conversion-failed': 'Converting this file failed.',
   'conversion-too-large': 'This file is too large to convert in the browser.',
   'conversion-unavailable': 'Conversion is not available in this browser.',
+  'conversion-core-integrity': 'The conversion core failed its integrity check and was not loaded.',
   unknown: 'Playback failed for an unknown reason.',
 };
 

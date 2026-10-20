@@ -582,6 +582,49 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 
 ---
 
+## D25 — Deployment hardening: CSP + security headers, integrity-verified ffmpeg core, notices
+
+- **Status:** Adopted (2026-10-20). Closes the non-gated items of
+  `docs/deployment-requirements.md` §1 (partly), §2 and §3. Does NOT touch Phase 3
+  providers (D20 gate), the media relay (D8), or any D18/D19 machinery.
+- **Context:** the Phase 5 app shipped with the recorded deployment gaps: no CSP, no
+  security headers, the ffmpeg.wasm core fetched WITHOUT integrity verification, and no
+  license/notices packaging for the served conversion stack. The owner asked for "the next
+  thing"; every remaining roadmap step is a gated decision (D20/D8), so the deployment
+  checklist — the one authoritative non-gated queue — was the next thing.
+- **Decision:**
+  1. **CSP + security headers** on every route (pages and API) via `next.config.ts`
+     `headers()`, built by the pure, unit-tested module `src/app/_lib/securityHeaders.ts`.
+     Dev-only relaxations (React Refresh `'unsafe-eval'`, HMR `ws:`) are provably absent
+     from the production policy. Every relaxation is empirically verified with e2e
+     evidence: `media-src blob:` (MSE MediaSource for hls.js/Shaka — without it the Mux
+     HLS e2e fails), `script-src`/`connect-src` `blob:` (the conversion worker imports the
+     verified core module from an origin-created blob: URL; without it the import fails
+     with `requestfailed: csp`), `'wasm-unsafe-eval'` (wasm compilation only — D19's
+     no-JS-execution rule unaffected), `'unsafe-inline'` (Next.js bootstrap — REMAINING
+     limitation until a nonce/middleware CSP; recorded, not silently accepted).
+  2. **Integrity-verified core loading (default ON).** The conversion engine fetches both
+     core artifacts as bytes and verifies SHA-256 against `pinned-core-hashes.json` (the
+     Task 11 audit digests, re-verified against the installed artifact — all six on-disk
+     copies match) BEFORE instantiating anything; mismatch fails CLOSED with the new typed
+     `conversion-core-integrity` error. `coreIntegrity: false` remains for recorded
+     deployments with a different pinned build. Verified blob URLs are revoked after
+     `load()` (bounded memory across retries). CDN fallback (§3) gets the same gate.
+  3. **Notices + tooling.** `notices/GPL-2.0.txt` (verbatim SPDX copy) and
+     `notices/THIRD-PARTY-NOTICES.md` (conversion stack; full NOTICE audit stays Phase 7 /
+     D15-F) are committed; `fixtures:web` stages `NOTICES.txt` next to the served wrapper
+     copies; `npm run verify:core` re-verifies any on-disk core against the pins.
+- **Consequences:** verified battery 2026-10-20 — vitest 410/410 (24 files; +15 new:
+  9 integrity, 6 security-headers, incl. the audit-digest triple-lock and the
+  catalog↔CSP host-sync check), tsc/eslint/library-build/next-build clean, app e2e
+  22/22 against the PRODUCTION build under the production CSP (incl. REAL ffmpeg.wasm
+  conversion on the watch page and the Mux HLS stream), demo e2e 6/6 (2 REAL conversions +
+  cancellation/recovery through the verified path). Remaining honestly open: the operator's
+  GPL complete-corresponding-source offer (§1), the nonce-based CSP follow-up, and the
+  Phase 7 full NOTICE audit.
+
+---
+
 ## Open future decisions (summary)
 
 | ID | Topic | Gate |

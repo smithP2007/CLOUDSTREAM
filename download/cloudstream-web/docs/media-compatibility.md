@@ -105,6 +105,14 @@ between `dist/umd` and `dist/esm`; the ESM loader JS sha256 is
 `67a48f11645f85439f3fde4f2119042c16b374b910206b7a7a24f342e28dcae3`). Wrapper
 `@ffmpeg/ffmpeg@0.12.15` and `@ffmpeg/util@0.12.2` (both MIT).
 
+> **D25 update (2026-10-20):** these two digests are now ENFORCED at runtime — the
+> conversion engine fetches the core as bytes and verifies SHA-256 against
+> `src/player/conversion/pinned-core-hashes.json` (which repeats exactly these values,
+> triple-locked by a unit test) before anything is instantiated, fail-closed. All six
+> on-disk copies (npm, demo staging, app staging × 2 files) were re-verified this session
+> via `npm run verify:core`. Serving obligations below are unchanged; see also
+> `deployment-requirements.md` §1–§3.
+
 **License of the actual core: GPL-2.0-or-later.** Evidence: (a) the package's npm
 `license` field; (b) the embedded configure line `--enable-gpl`; (c) GPL-only external
 codecs compiled in (libx264, libx265). FFmpeg itself is LGPL-2.1-or-later; `--enable-gpl`

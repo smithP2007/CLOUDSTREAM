@@ -17,6 +17,13 @@
 import { PlaybackError } from '../errors';
 import { conversionArgs, DEFAULT_MAX_CONVERT_INPUT_BYTES, type ConversionProfile } from './profiles';
 import { safeVirtualName } from '../localMedia';
+import {
+  defaultCoreIo,
+  fetchAndVerifyArtifact,
+  PINNED_CORE_SHA256,
+  type CoreArtifactHashes,
+  type CoreIo,
+} from './coreIntegrity';
 
 /** Minimal structural view of the @ffmpeg/ffmpeg module we use. */
 export interface FfmpegInstanceLike {
@@ -58,6 +65,21 @@ export const defaultFfmpegLoader: FfmpegLibraryLoader = async () => {
   };
 };
 
+/**
+ * Core integrity options (D25). By default the engine fetches both core
+ * artifacts as bytes, verifies their SHA-256 against the pinned digests
+ * (PINNED_CORE_SHA256), and only then instantiates anything — a tampered or
+ * corrupted core fails closed with 'conversion-core-integrity' before the
+ * wasm/JS machinery ever sees it. `expected` overrides the digests (e.g. an
+ * operator staging a different pinned build); `false` disables verification
+ * entirely (legacy behavior — only for recorded, reviewed deployments).
+ */
+export interface CoreIntegrityOptions {
+  expected?: CoreArtifactHashes;
+  /** Injectable I/O seams (tests); defaults to the browser globals. */
+  io?: Partial<CoreIo>;
+}
+
 export interface ConversionEngineOptions {
   /** Library loader seam (tests inject fakes; default = real dynamic imports). */
   loadLibraries?: FfmpegLibraryLoader;
@@ -68,6 +90,8 @@ export interface ConversionEngineOptions {
   execTimeoutMs?: number;
   /** Environment override for tests (defaults to globalThis). */
   env?: { Worker?: unknown; WebAssembly?: unknown };
+  /** Integrity verification for the fetched core; default = pinned digests (D25). */
+  coreIntegrity?: CoreIntegrityOptions | false;
 }
 
 /**
@@ -114,6 +138,7 @@ export function probeConversionEnvironment(env: { Worker?: unknown; WebAssembly?
 export function createConversionEngine(options: ConversionEngineOptions = {}): ConversionEngine {
   const loadLibraries = options.loadLibraries ?? defaultFfmpegLoader;
   const coreBaseUrl = options.coreBaseUrl ?? DEFAULT_CORE_CDN_BASE;
+  const coreIntegrity = options.coreIntegrity ?? {};
   const maxInputBytes = options.maxInputBytes ?? DEFAULT_MAX_CONVERT_INPUT_BYTES;
   const execTimeoutMs = options.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
 
@@ -130,9 +155,33 @@ export function createConversionEngine(options: ConversionEngineOptions = {}): C
     ready = (async () => {
       const { module, util } = await librariesPromise as { module: FfmpegModuleLike; util: FfmpegUtilLike };
       const instance = new module.FFmpeg();
-      const coreURL = await util.toBlobURL(`${coreBaseUrl}/ffmpeg-core.js`, 'text/javascript');
-      const wasmURL = await util.toBlobURL(`${coreBaseUrl}/ffmpeg-core.wasm`, 'application/wasm');
-      await instance.load({ coreURL, wasmURL });
+      if (coreIntegrity === false) {
+        // Legacy path (verification disabled) — unchanged audited behavior.
+        const coreURL = await util.toBlobURL(`${coreBaseUrl}/ffmpeg-core.js`, 'text/javascript');
+        const wasmURL = await util.toBlobURL(`${coreBaseUrl}/ffmpeg-core.wasm`, 'application/wasm');
+        await instance.load({ coreURL, wasmURL });
+      } else {
+        // D25: both artifacts are fetched as bytes and verified BEFORE anything
+        // is instantiated — a tampered core never reaches the wasm machinery.
+        const io: CoreIo = { ...defaultCoreIo(), ...coreIntegrity.io };
+        const expected: CoreArtifactHashes = coreIntegrity.expected ?? PINNED_CORE_SHA256;
+        const [jsBytes, wasmBytes] = await Promise.all([
+          fetchAndVerifyArtifact(`${coreBaseUrl}/ffmpeg-core.js`, 'ffmpeg-core.js (ESM loader)', expected.js, io),
+          fetchAndVerifyArtifact(`${coreBaseUrl}/ffmpeg-core.wasm`, 'ffmpeg-core.wasm', expected.wasm, io),
+        ]);
+        const coreURL = io.createObjectUrl(jsBytes, 'text/javascript');
+        const wasmURL = io.createObjectUrl(wasmBytes, 'application/wasm');
+        try {
+          await instance.load({ coreURL, wasmURL });
+        } finally {
+          // load() resolving means the worker has imported the module and
+          // compiled the wasm. These blob URLs are OURS (created above), so
+          // revoking them bounds memory across retries (cancel -> rebuild
+          // creates fresh URLs instead of leaking a ~31 MiB blob each time).
+          io.revokeObjectUrl(coreURL);
+          io.revokeObjectUrl(wasmURL);
+        }
+      }
       ffmpeg = instance;
       return { ffmpeg: instance, util };
     })();

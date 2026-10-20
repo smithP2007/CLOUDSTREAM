@@ -107,6 +107,7 @@ function makeEngine(overrides?: { maxInputBytes?: number }) {
   const libs = makeFakeModule();
   const engine = createConversionEngine({
     loadLibraries: async () => ({ module: libs.module, util: libs.util }),
+    coreIntegrity: false,
     env: ENV_OK,
     maxInputBytes: overrides?.maxInputBytes,
   });
@@ -133,6 +134,7 @@ describe('conversion engine', () => {
     const libs = makeFakeModule();
     const engine = createConversionEngine({
       loadLibraries: async () => ({ module: libs.module, util: libs.util }),
+      coreIntegrity: false,
       env: NO_ENV,
     });
     await expect(
@@ -197,6 +199,7 @@ describe('conversion engine', () => {
     const failing = makeFakeModule({ execResult: 1 });
     const engine = createConversionEngine({
       loadLibraries: async () => ({ module: failing.module, util: failing.util }),
+      coreIntegrity: false,
       env: ENV_OK,
     });
     await expect(
@@ -208,6 +211,7 @@ describe('conversion engine', () => {
     const libs = makeFakeModule({ hangExec: true });
     const engine = createConversionEngine({
       loadLibraries: async () => ({ module: libs.module, util: libs.util }),
+      coreIntegrity: false,
       env: ENV_OK,
     });
     const controller = new AbortController();
@@ -224,6 +228,7 @@ describe('conversion engine', () => {
     const libs2 = makeFakeModule();
     const engine2 = createConversionEngine({
       loadLibraries: async () => ({ module: libs2.module, util: libs2.util }),
+      coreIntegrity: false,
       env: ENV_OK,
     });
     await engine2.convert(new Blob([new Uint8Array(4)]), { profile: CONVERSION_PROFILES.mp4 });

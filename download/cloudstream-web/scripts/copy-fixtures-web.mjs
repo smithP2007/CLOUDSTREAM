@@ -13,7 +13,7 @@
  * source of truth. Run automatically by `npm run e2e:app` and available
  * standalone as `npm run fixtures:web`.
  */
-import { cpSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,5 +54,17 @@ if (existsSync(WRAPPER_SRC) && existsSync(UTIL_SRC)) {
   console.log('fixtures:web: copied @ffmpeg/ffmpeg + @ffmpeg/util ESM builds into public/ffmpeg-lib/.');
 } else {
   console.error('fixtures:web: @ffmpeg wrapper/util ESM builds missing — run "npm install".');
+  process.exit(1);
+}
+
+// Serving the wrapper/core copies is distribution — the license notices must
+// travel with them (docs/deployment-requirements.md §1). The committed
+// notices/THIRD-PARTY-NOTICES.md covers the served conversion stack.
+const NOTICES_SRC = join(ROOT, 'notices', 'THIRD-PARTY-NOTICES.md');
+if (existsSync(NOTICES_SRC)) {
+  copyFileSync(NOTICES_SRC, join(DEST_LIB, 'NOTICES.txt'));
+  console.log('fixtures:web: staged notices/THIRD-PARTY-NOTICES.md as public/ffmpeg-lib/NOTICES.txt.');
+} else {
+  console.error('fixtures:web: notices/THIRD-PARTY-NOTICES.md missing — license notices must ship with served copies.');
   process.exit(1);
 }

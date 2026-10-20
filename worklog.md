@@ -250,3 +250,21 @@ Work Log:
 
 Stage Summary:
 - GitHub main branch now displays the root README; main tip advanced to the new commit; github-export retained as legacy lineage only.
+
+---
+Task ID: 15
+Agent: main (Z.ai)
+Task: "Do the next thing" — implemented D25 deployment hardening (the non-gated next step): CSP + security headers, integrity-verified ffmpeg core, license notices. Full record in download/cloudstream-web/docs/worklog.md Task 13.
+
+Work Log:
+- Roadmap gate check first: every remaining product step is STOP-gated (D20 providers / D8 relay) — chose the authoritative non-gated queue (deployment-requirements.md) instead of touching gated work.
+- CSP + security headers via next.config.ts headers() from the pure builder src/app/_lib/securityHeaders.ts; two relaxations were EMPIRICALLY required and verified by e2e failure→fix cycles: media-src blob: (MSE for hls.js/Shaka) and script-src/connect-src blob: (conversion worker imports the verified core blob module).
+- ffmpeg core integrity: fetch-bytes + SHA-256 against pinned-core-hashes.json (triple-locked with the Task 11 audit record), fail-closed typed conversion-core-integrity error, verified-URL revocation; CDN fallback covered; verify:core tooling added.
+- Notices: notices/GPL-2.0.txt (verbatim SPDX), THIRD-PARTY-NOTICES.md staged beside served copies.
+- Battery (actual): vitest 410/410 (24 files), tsc/eslint/library-build/next-build clean, app e2e 22/22 (production build, production CSP, incl. REAL conversion + Mux HLS), demo e2e 6/6 (REAL conversions through the verified path), verify:core 6/6.
+- Docs updated: D25 decision, deployment-requirements §1–§3 DONE/REMAINING states, media-compatibility §5 note, HANDOFF, both READMEs.
+
+Stage Summary:
+- D25 complete and verified; deployment-requirements non-gated items closed (§2, §3; §1 partly — GPL source offer remains an operator action).
+- Phase 3 (D20) and Phase 4 relay (D8) remain gated — next roadmap task is still the owner decision on those gates.
+- Committed and pushed to GitHub main.

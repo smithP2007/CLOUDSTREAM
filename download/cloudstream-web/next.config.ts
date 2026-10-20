@@ -13,16 +13,34 @@
  *   see src/player/usePlaybackController.ts and the component test that pins
  *   the no-duplicate-playlist-entry behavior under StrictMode).
  *
- * Deliberately NOT configured here (recorded as deployment requirements in
- * docs/deployment-requirements.md): CSP and security headers (Phase 7 scope),
- * image optimizer domains (the app uses plain <img> + local SVG posters).
+ * - Security headers + CSP are wired through `headers()` from the pure
+ *   builder in `src/app/_lib/securityHeaders.ts` (decision D25) — one
+ *   definition shared with the unit tests. Remaining recorded limitations
+ *   (unsafe-inline until a nonce CSP, unpkg connect-src for the verified CDN
+ *   fallback) live in that module's docblock and
+ *   docs/deployment-requirements.md.
+ * - Image optimizer domains stay unconfigured (the app uses plain <img> +
+ *   local SVG posters).
  */
 import type { NextConfig } from 'next';
+import { buildSecurityHeaders } from './src/app/_lib/securityHeaders';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typescript: {
     tsconfigPath: 'tsconfig.next.json',
+  },
+  async headers() {
+    const environment = process.env.NODE_ENV === 'production' ? 'production' : 'development';
+    return [
+      {
+        source: '/:path*',
+        headers: buildSecurityHeaders(environment).map((header) => ({
+          key: header.key,
+          value: header.value,
+        })),
+      },
+    ];
   },
   turbopack: {
     resolveAlias: {

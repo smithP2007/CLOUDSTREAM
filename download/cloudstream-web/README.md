@@ -5,7 +5,8 @@ A browser-based movie, series and anime application **inspired by** [CloudStream
 **Status: Phase 0–2 complete; Phase 4 task 2 (player stack) complete + audited; Phase 3 (real
 providers) gated on the pre-flight checklist and the D20 approval process; Phase 5 (Next.js web
 application) implemented — fixture catalog, browse/search/details/watch/library/providers, with
-the real player integrated end to end.**
+the real player integrated end to end; deployment hardening (D25) done — CSP + security
+headers, integrity-verified ffmpeg core, license notices.**
 
 ## Policy & decisions
 
@@ -116,18 +117,24 @@ Deterministic mock data: `src/server/providers/mock/` (fictional titles, local S
 provenance). Route segments carrying provider data are canonical base64url tokens — opacity
 preserved. React StrictMode is ON (D24); the player hook is StrictMode-safe and pinned by tests.
 
+Deployment hardening (D25): every route serves a CSP + security headers from the unit-tested
+builder `src/app/_lib/securityHeaders.ts`, and the conversion engine verifies the fetched
+ffmpeg.wasm core's SHA-256 against the audited pinned digests before loading it (fail-closed).
+Remaining deployment obligations (GPL source offer, nonce-CSP follow-up):
+`docs/deployment-requirements.md`.
+
 ```bash
 npm run dev        # next dev on :3000
 npm run build:app  # next build (production)
 npm run start      # next start on :3000
-npm test           # vitest — 395 tests (incl. catalog/codec/library/prefs/UI suites)
+npm test           # vitest — 410 tests (incl. catalog/codec/library/prefs/UI/security suites)
 ```
 
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (395 tests: provider/HTTP/parsing suites + player + Phase 5 app suites)
+npm test        # vitest (410 tests: provider/HTTP/parsing suites + player + Phase 5 app suites + D25 security)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

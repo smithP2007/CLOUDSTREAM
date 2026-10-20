@@ -38,7 +38,7 @@ and what to build next. Full history of every work session is in
    spec, not source to copy)
 5. `docs/worklog.md` — what every previous session actually did and verified
 
-## 2. Current state (verified green at handoff time — Phase 5, 2026-10-20)
+## 2. Current state (verified green at handoff time — Phase 5 + D25 hardening, 2026-10-20)
 
 - **Complete:** Phase 0, Phase 1 (contract layer), Phase 2 (all steps), Phase 4 task 2
   (player stack, D21–D23, post-implementation audit commit series), and **Phase 5** (the
@@ -46,10 +46,19 @@ and what to build next. Full history of every work session is in
   a deterministic mock fixture provider, wired ONLY through `ProviderHost` + `LinkPipeline` +
   the D19 observability wrapper. The Phase 3 gate (D20) is UNTOUCHED and still requires owner
   approval; the media relay (Phase 4 task 1, D8) is still not built.
-- **Tests: 395/395 vitest** across 22 files + **18/18 app e2e** (Playwright against the
-  PRODUCTION `next build` via `next start`) + **6/6 demo e2e** (includes 2 REAL ffmpeg.wasm
-  conversion runs). NOTE: vitest must collect `.tsx` (include `*.test.{ts,tsx}`) — an earlier
-  pattern silently skipped the component suites; do not regress that.
+- **Tests: 410/410 vitest** across 24 files + **22/22 app e2e** (Playwright against the
+  PRODUCTION `next build` via `next start`, under the production CSP) + **6/6 demo e2e**
+  (includes 2 REAL ffmpeg.wasm conversion runs). NOTE: vitest must collect `.tsx` (include
+  `*.test.{ts,tsx}`) — an earlier pattern silently skipped the component suites; do not
+  regress that.
+- **D25 deployment hardening (2026-10-20):** CSP + security headers on every route
+  (`src/app/_lib/securityHeaders.ts`, unit-tested; `media-src`/`script-src`/`connect-src`
+  `blob:` relaxations empirically verified), ffmpeg core SHA-256 verification DEFAULT-ON in
+  the conversion engine (fail-closed `conversion-core-integrity`;
+  `src/player/conversion/pinned-core-hashes.json` = the Task 11 audit digests), notices
+  committed (`notices/`), `npm run verify:core` tooling. Remaining: operator GPL
+  source-offer (deployment-requirements §1), nonce-based CSP follow-up, Phase 7 NOTICE
+  audit. The Phase 3 gate (D20) is UNTOUCHED; the media relay (D8) is still not built.
 - **Verification battery:** `npm test` + `npm run typecheck` + `npm run lint` +
   `npm run build` (library → dist/) + `npm run build:app` (next build) + `npm run e2e` +
   `npm run e2e:app` — all green at handoff.
@@ -68,6 +77,7 @@ and what to build next. Full history of every work session is in
     `public/fixtures/` + `public/ffmpeg-lib/` — gitignored runtime copies (staging scripts)
   - `docs/deployment-requirements.md` — licensing/SRI/CSP gaps that gate ANY deployment
 - **Commands:** `npm ci && npm test && npm run typecheck && npm run lint && npm run build && npm run build:app && node scripts/copy-fixtures-web.mjs && npm run e2e:app`
+  (conversion e2e additionally needs `npm run fixtures:ffmpeg-core`; verify core digests with `npm run verify:core`)
 
 ## 3. The exact next task (Phase 3 gate — still STOP first)
 
