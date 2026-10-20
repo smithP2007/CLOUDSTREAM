@@ -158,3 +158,20 @@ Work Log:
 Stage Summary:
 - docs/phase3-preflight-checklist.md at revision 2 (456 lines); no implementation files touched; no probes run; baseline still 6fd80cc + docs commits.
 - Open gates unchanged: owner approval of revision 2; P3 (ToU archive) resolving A1/R1; D20 adoption with collection pools + initial register entries + pacing values; playback claims OFF until P2a-P2f.
+
+---
+Task ID: 9
+Agent: main (Z.ai)
+Task: Final consistency pass over docs/phase3-preflight-checklist.md per the owner's 6-point instruction (documentation only — no probes, no provider code, no D20 adoption).
+
+Work Log:
+- Verified repository state before editing: HEAD d75cdf1 (environment auto-commit of tool-results/worklog); latest commit touching the checklist is b01219a (revision 2); lineage 33b3fe9 -> b01219a recorded from actual git state, not guessed.
+- Resolved the Section 10 vs draft D20 contradiction: D20 restructured into explicit adoption preconditions (dated ToU copy archived via P3 into docs/evidence/; explicit review of the read-only automated-access clauses; favorable conclusion recorded) plus a separate "what adoption would authorize" block; removed the "ToU gate still open" running-condition phrasing; added that adopting D20 while the gate is open is invalid and no shortcut (API publicness, robots non-exclusion, checklist approval) resolves the gate.
+- Retensed Section 6 (plus one matching Section 5 sentence and the P2a bullet in 9.3): "P2a confirms/verifies/establishes" -> future-obligation wording with "not yet run"; tag cells now state "nothing probe-confirmed"; no probe outcome is claimed anywhere.
+- Tightened Section 8 item 1 into a verified-destination policy: (i) API destination = archive.org only; (ii) datanode destinations allowed only when verified from that item's own metadata response (d1/d2/server/workable_servers, E3) at fetch time; the *.us.archive.org wildcard demoted to a coarse shape guard, never proof of an approved media server; every redirect hop revalidated through the full D18 pipeline against the same policy. Section 6 redirects row and probe P2c updated to match.
+- Preserved unchanged: CORS native-vs-JS distinctions, per-item rights-register requirement, evidence log E1-E24 and all tags, stop conditions R1-R8, robots.txt finding E24, the "no probe runs before owner approval" rule.
+- Status header bumped to revision 3 with a changelog entry; preparation note re-anchored to the verified commit lineage.
+
+Stage Summary:
+- docs/phase3-preflight-checklist.md at revision 3 (495 lines); docs-only change; no implementation files touched; no probes run; D20 remains un-adopted and un-adoptable while the ToU gate is open.
+- Stopped for owner review as instructed; awaiting approval before any probe or provider code.
