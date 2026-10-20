@@ -236,3 +236,17 @@ Work Log:
 Stage Summary:
 - Remote main == local main (self-contained continuation snapshot: HANDOFF.md, POLICY.md, docs/decisions.md, docs/implementation-roadmap.md, both worklogs, all tests/fixtures included).
 - State for the next session: Phase 5 complete and awaiting owner review; next roadmap task per docs/implementation-roadmap.md; Phase 3 providers / Phase 4 relay / D20 remain gated as before.
+
+---
+Task ID: 14
+Agent: main (Z.ai)
+Task: Owner reported no README visible on the GitHub main branch and asked to merge everything into main and keep main latest.
+
+Work Log:
+- Diagnosed: the repository root had no README.md — GitHub renders only the root-level README of the default branch, and the project README lived one level down at download/cloudstream-web/README.md.
+- Verified github-export holds no unique content: it is an older snapshot with a legacy layout, content-wise a subset of main (main is 27+ commits newer) — nothing to merge; main already contains everything.
+- Created root README.md: repo map, phase status, quick start, AI continuation instructions, branch guide, compliance summary.
+- Appended this entry, committed README + worklog together, pushed to main (fast-forward; main remains the latest branch).
+
+Stage Summary:
+- GitHub main branch now displays the root README; main tip advanced to the new commit; github-export retained as legacy lineage only.
