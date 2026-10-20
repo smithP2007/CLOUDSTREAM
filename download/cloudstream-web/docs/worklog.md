@@ -129,3 +129,21 @@ Work Log:
 Stage Summary:
 - Phase 2 is fully complete (steps 1-5). No JS execution exists in the project; the only new dependency is cheerio.
 - Exact next task: present the Phase 3 pre-flight inspection checklist for the first candidate provider (recommended: Internet Archive) and STOP for owner review before any provider implementation (roadmap gate; POLICY.md §3).
+
+---
+Task ID: 7
+Agent: main (Z.ai)
+Task: Prepare the Phase 3 pre-flight checklist for the proposed Internet Archive provider (review document only — no provider code, no implementation-file changes), per the owner's 10-section specification. Present it and stop for approval.
+
+Work Log:
+- Verified baseline: main @ 6fd80cc clean (research/ submodule dirt is upstream clones, untouched); vitest 267/267 green re-run.
+- Read roadmap (Phase 3 gate + 7-point checklist), POLICY.md (§3 categories, §6 commitments), decisions.md (D1–D19 incl. D18 SSRF posture, D19 no-JS/cache/observability), provider-architecture.md, HANDOFF.md, and the actual contract surface (types.ts, provider.ts, engine.ts HttpFailureKind).
+- Researched official Internet Archive sources (fetched 2026-10-20): help.archive.org "About Search" (advancedsearch.php params, 10,000-row sorted-pagination cap, scrape API cursor contract + official JSON example), developers md-read.html (metadata endpoint, response fields, files[] entry fields, empty-array-on-missing-id quirk), metadata.html (auth model, compression), developers bots.html (mandatory descriptive UA, 429/Retry-After discipline, caching/backoff best practices), help "Rights" + "Movies and Videos" + "Files, Formats, and Derivatives" (no copyright-status guarantees, CC uploader-designated, h.264 mp4 derivatives, unstreamable-files caveat), ias3.html (307-redirect likelihood), access policy, developer portal inventory, Tasks-API rate-limit introspection scope.
+- Sandbox has no direct egress (curl timeout): CORS / byte-range / live-header probes and live sample payloads NOT executed — recorded as UNKNOWN evidence items E16–E21 with probe plan P1–P4; no facts invented, metadata lookup not treated as playback proof.
+- Wrote docs/phase3-preflight-checklist.md: evidence log (23 tagged items), 10 owner-specified sections (authorization/terms/licensing; endpoints/formats; contract mapping incl. union schema for the [] quirk; item→movie/series mapping; MP4/HLS + NOT-VERIFIED playback status; CORS/redirects/range/subtitles; rate limits/caching/timeouts/error mapping onto HttpFailureKind/ProviderFailureKind; security exclusions incl. host allowlist + no-credentials + no-lending + no-relay; fixture+test plan (8 fixtures, zero live calls) + probe script spec; risks R1–R8, exit criteria, CONDITIONAL GO) + draft D20 decision.
+- Roadmap: one status line added under the Phase 3 checklist gate pointing to the checklist (minimal edit; no other docs touched).
+
+Stage Summary:
+- Deliverable: docs/phase3-preflight-checklist.md (review-only) + roadmap status pointer; repo left code-identical to 6fd80cc.
+- Key open gates before any provider code: owner approval of checklist; P4 (archived dated Terms of Use) resolving E20/R1; D20 recording allowlist + pacing values; playback claims OFF until P2/P3 probes.
+- Stopped for owner approval as instructed; Phase 3 not started.

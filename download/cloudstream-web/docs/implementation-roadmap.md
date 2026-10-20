@@ -187,6 +187,11 @@ begins).**
 
 ### Phase 3 pre-flight inspection checklist (per candidate provider)
 
+> **Status (2026-10-20):** Completed for build-order #1 (Internet Archive) — full review with
+> evidence log, endpoint contracts, playback-constraint gaps, fixture/test plan, risks and a
+> CONDITIONAL-GO recommendation in [`phase3-preflight-checklist.md`](phase3-preflight-checklist.md)
+> (DRAFT, awaiting owner approval; no provider code written; proposed D20 pending).
+
 1. **Provider authorization** — the content category is mapped to POLICY.md §3 (categories 1–4
    only) and recorded in a new decision entry before any code.
 2. **Service terms** — the target's current terms of service / API terms permit the intended
