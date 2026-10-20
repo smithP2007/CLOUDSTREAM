@@ -417,6 +417,99 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 
 ---
 
+## D21 — Client-side playback stack: strategy-based player, NO media relay in this milestone
+
+- **Status:** Adopted (2026-10-20, owner instruction) — implemented in `src/player/`
+- **Context:** Roadmap Phase 4 pairs a media relay (task 1) with a player (task 2). The owner's
+  media-support instruction authorizes the PLAYER milestone only — local files, fixtures and
+  authorized demo streams — while Phase 3 (real providers) remains gated on the D20 approval
+  process. No relay exists; building one is explicitly out of scope (D8 unchanged).
+- **Decision:**
+  1. **Strategy-based architecture** in `src/player/`: framework-agnostic core (`types.ts`,
+     `formatSupport.ts`, `playbackDecision.ts`, `PlaybackController.ts`, `localMedia.ts`,
+     `engines/*`, `conversion/*`) + thin React UI components. New engines register as strategies;
+     the controller owns state, bounded source fallback, object-URL lifecycle and cleanup.
+  2. **Engines:** native `<video>` (progressive MP4/WebM/etc.), HLS via hls.js (lazy) with native
+     HLS fallback where the browser supports it, DASH via dash.js (lazy). Every engine attach is
+     preceded by runtime capability detection (`MediaSource` presence, `canPlayType` probes) — a
+     filename extension is never treated as proof of playability.
+  3. **The shared contract is reused unchanged:** `PlaybackLink` (incl. `type: 'video'|'hls'|'dash'`)
+     and `SubtitleFile`; quality selection reuses the core quality-sort semantics (desc, unknown
+     last, stable). No new media types and no second link-resolution path.
+  4. **Links that require headers/referer are NOT played and NOT proxied.** The decision flow
+     classifies them as `relay-required` — surfaced as an explicit compatibility limitation
+     pointing at the future authenticated, quota-limited relay (roadmap Phase 4 task 1, D8 scope) —
+     and the player falls back to other sources. No client URL may trigger any server-side fetch
+     in this milestone (there is no such endpoint).
+  5. **Local conversion is client-side only** (ffmpeg.wasm, D22) and is OFFERED, never automatic:
+     native playback is always attempted first; an explicit "Convert and play" action exists; no
+     server-side transcoding service is built (a future one requires a separate security review).
+  6. **Local media stays on the device:** files are opened via the File API + object URLs; nothing
+     is uploaded to any server (no upload code path exists); large files are never read whole
+     (container sniffing reads a bounded 4 KiB head slice).
+- **Consequences:** header/referer-dependent provider sources stay unplayable until the relay
+  decision; browser-support boundaries are honestly reported per runtime probe (see
+  `docs/media-compatibility.md`); the player is independently testable without any provider.
+
+## D22 — Playback dependencies: one library per purpose, lazily loaded, honest capability scope
+
+- **Status:** Adopted (2026-10-20) — pinned in `package.json`
+- **Context:** The player needs HLS/DASH engines and an optional client-side transcoder. Licenses
+  and runtime payload must be recorded (POLICY §6) and the initial bundle must stay small.
+- **Decision:**
+  1. **hls.js 1.7.3 (Apache-2.0)** for HLS; **Shaka Player 5.3.1 (Apache-2.0)** for DASH — one
+     library per purpose, both dynamically imported only when such a source plays (and only after
+     `MediaSource` support is detected; native HLS fallback on Safari-class browsers). Neither is
+     imported statically anywhere. **Finding:** the package published under the `dash.js` name in
+     the registry accessed on 2026-10-20 (4.0.1) is NOT the MPEG-DASH player — its shipped
+     typings declare an unrelated React UI kit (`DashboardLayout`, `lucide-react`) — so it was
+     REJECTED on dependency-hygiene grounds and the task-sanctioned alternative (Shaka Player,
+     `shaka-project/shaka-player`) is used for the contract's `dash` link type.
+  2. **@ffmpeg/ffmpeg 0.12.15 + @ffmpeg/util 0.12.2 (both MIT)** as the conversion wrapper —
+     dynamically imported only by the conversion module. **@ffmpeg/core 0.12.10 is
+     GPL-2.0-or-later**; its pinned build was verified to include `--enable-gpl --enable-libx264
+     --enable-libvpx --enable-libvorbis --enable-libtheora --enable-libopus --enable-libmp3lame
+     --enable-zlib` (read from the binary). The core is a **devDependency**: a script copies it
+     into the demo's gitignored public dir for self-hosted loading; the pinned CDN is the
+     fallback. The core is NEVER statically imported, never bundled, and never committed.
+  3. **Conversion bounds & honesty:** input capped (default 1.5 GiB, well under the wasm32 2 GiB
+     ceiling upstream documents); progress events are best-effort (upstream marks the progress
+     hook experimental); cancellation terminates the FFmpeg worker; supported codecs are the
+     build's table (H.264/VP8/VP9/Theora encode; AAC/MP3/Vorbis/Opus audio; broad decode set) —
+     claims are limited to that table and to what tests verify.
+  4. **UI/testing stack:** react/react-dom 19.3.1 (MIT) for player components; jsdom +
+     @testing-library/react for component tests; vite 8 as the dev-only demo server (not part of
+     the library build); eslint-plugin-react-hooks to pin effect/cleanup discipline.
+- **Consequences:** the GPL core's license interaction is confined to an optional, runtime-loaded
+  artifact and is flagged for the Phase 7 NOTICE audit (D15-F gate); if distribution terms ever
+  conflict, the conversion strategy is replaceable or disablable without touching playback.
+  Heavy engines absent from a bundle degrade to typed `engine-missing` errors, never crashes.
+
+## D23 — Dev-only demo page and fixture policy: lawful sources only, no registry impact
+
+- **Status:** Adopted (2026-10-20)
+- **Context:** The player must be verifiable while Phase 3 is gated and no production UI exists
+  (Phase 5). Demo media must be lawful, and the provider registry must stay untouched.
+- **Decision:**
+  1. `demo/` is a **Vite dev-server page** (`npm run demo`) — developer tooling only, excluded
+     from the library build and from the provider system.
+  2. Local-file testing uses the browser File API plus **tiny generated fixtures**
+     (`scripts/generate-fixtures.sh`, sandbox ffmpeg CLI, ~1–2 s each: MP4/H.264+AAC,
+     WebM/VP9+Opus, Ogg/Theora+Vorbis, MKV, AVI, MOV, a 1-segment HLS VOD, VTT/SRT subtitles).
+     No copyrighted media is committed; provenance is documented in the script and README.
+  3. Remote demo entries are **authorized/public test streams with recorded provenance**:
+     Big Buck Bunny (© Blender Foundation, CC BY) served by public test endpoints (Mux test
+     streams, Apple HLS example stream, Akamai/DASH-IF test vector) and MDN's CC0 sample video.
+     They are loaded only on the demo page, clearly labeled; live availability is NOT guaranteed
+     and failures surface as typed network errors.
+  4. The demo page wires `PlaybackLink` **fixtures defined in the demo itself** — it never calls
+     `ProviderRegistry`, registers no provider, and ships no provider code.
+- **Consequences:** the demo needs internet access for the third-party streams (degrades
+  gracefully); fixture regeneration requires the ffmpeg CLI locally; nothing in `demo/` is
+  reachable from the library's public surface.
+
+---
+
 ## Open future decisions (summary)
 
 | ID | Topic | Gate |

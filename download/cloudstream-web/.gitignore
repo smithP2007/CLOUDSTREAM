@@ -3,3 +3,7 @@ node_modules/
 .env.*
 *.log
 .DS_Store
+demo/public/ffmpeg-core/
+demo/dist-demo/
+test-results/
+playwright-report/

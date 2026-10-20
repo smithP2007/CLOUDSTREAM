@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:00,700
+Hello from the generated fixture (cue 1).
+
+2
+00:00:00,700 --> 00:00:01,400
+Second cue: seeking should keep captions in sync.
+
+3
+00:00:01,400 --> 00:00:02,000
+Final cue.

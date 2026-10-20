@@ -1,0 +1,66 @@
+/* Demo page chrome (dev-only). The player ships its own styles. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #010409;
+  color: #e6edf3;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.demo-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.demo-header h1 {
+  font-size: 1.4rem;
+  margin: 0 0 8px;
+}
+
+.demo-banner {
+  background: #161b22;
+  border: 1px solid #2d333b;
+  border-left: 3px solid #6ea8fe;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #8b949e;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.demo-provenance {
+  background: #0d1117;
+  border: 1px solid #2d333b;
+  border-radius: 10px;
+  padding: 16px 20px;
+  color: #8b949e;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.demo-provenance h2 {
+  color: #e6edf3;
+  font-size: 1rem;
+  margin: 8px 0;
+}
+
+.demo-provenance code {
+  background: #161b22;
+  border: 1px solid #2d333b;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.82rem;
+  color: #6ea8fe;
+}
+
+.demo-provenance ul {
+  padding-left: 20px;
+}

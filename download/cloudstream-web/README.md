@@ -62,11 +62,36 @@ Engine behavior is pinned by `tests/http-guard.test.ts` (43 unit tests, mocked D
 
 **No JavaScript execution exists in this project** (owner instruction, D19): extracted/packed content is decoded as text only. General JS execution is deferred until a legitimate provider needs it, and then requires a separately isolated runtime and a security review (gated by D6-F). Test counts: `tests/html.test.ts` (12), `tests/json.test.ts` (10), `tests/packer.test.ts` (19), `tests/link-pipeline.test.ts` (16), `tests/observability.test.ts` (23).
 
+## Phase 4 (task 2, partial) — player stack (`src/player/`)
+
+Implemented **without** the media relay (Phase 4 task 1 — deferred; D21): local files + fixtures
++ authorized demo streams only; no real providers (Phase 3 stays gated on the D20 approval
+process). Decisions: D21 (architecture/scope), D22 (dependencies + honest conversion scope),
+D23 (demo/fixture policy). Compatibility evidence with per-claim verification status:
+[`docs/media-compatibility.md`](docs/media-compatibility.md).
+
+| Module | Contents |
+|---|---|
+| `types.ts`, `errors.ts` | Player vocabulary (reuses the shared `PlaybackLink`/`SubtitleFile` contract unchanged), typed `PlaybackError` codes |
+| `formatSupport.ts` | Signature-based container sniffing (extensions are hints only) + runtime `canPlayType`/MSE probes |
+| `playbackDecision.ts` | The testable decision flow: validate → relay-required → native → HLS/DASH → conversion offer → honest failure; bounded fallback ordering |
+| `PlaybackController.ts` | Headless state machine: playlist, decision-gated playback, bounded source fallback, object-URL lifecycle, subtitles (SRT→VTT; provider tracks fetched once), dispose |
+| `engines/` | Native `<video>`, HLS (hls.js, lazy, native-HLS fallback), DASH (Shaka Player, lazy) — strategy registry |
+| `conversion/` | OPTIONAL client-side ffmpeg.wasm engine (lazy, cancellable, size-bounded, GPL core self-host-or-CDN, never bundled) |
+| `MediaPlayer.tsx` + panels | Responsive player UI: transport + keyboard, source/quality selector, subtitle selector, playlist, conversion panel, accessible controls |
+
+```bash
+npm run demo                 # dev-only player page (NO providers; local files + fixtures + lawful demo streams)
+npm run fixtures:generate    # regenerate tiny synthetic fixtures (ffmpeg CLI)
+npm run fixtures:ffmpeg-core # self-host the pinned GPL ffmpeg core into gitignored demo/public/ffmpeg-core/
+npx playwright test          # E2E against the demo page (deterministic, local fixtures)
+```
+
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (267 tests)
+npm test        # vitest (341 tests: provider/HTTP/parsing suites + player suites)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "types": ["node"],
 
     "strict": true,
@@ -20,6 +21,6 @@
 
     "noEmit": true
   },
-  "include": ["src", "tests", "vitest.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "tests", "demo", "vite.config.demo.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist", "demo/fixtures", "demo/public", "demo/dist-demo"]
 }

@@ -103,6 +103,12 @@
 
 **Goal:** make links actually *play* in a PC browser.
 **Dependency:** Phase 3 (real link shapes needed).
+**Status (2026-10-20):** task 2 (player stack) implemented as a standalone milestone in
+`src/player/` — decisions D21–D23, evidence in `docs/media-compatibility.md`. Task 1 (media
+relay) is deliberately NOT built (needs its own security review; D8 scope unchanged), and no
+Phase 3 provider exists yet (gated on the D20 approval process). The dev-only demo page
+(`npm run demo`) exercises the player via local files, generated fixtures and authorized demo
+streams.
 **Tasks:**
 
 1. **Media relay** (`/api/media` route): streams manifests/segments server-side, injecting required `referer`/`headers` (the web replacement for ExoPlayer okhttp datasource + `getVideoInterceptor`, `MainAPI.kt:702`), with auth-gating, per-user quotas, no cross-user caching of protected media, range-request passthrough for seeking.

@@ -182,3 +182,23 @@ Work Log:
 Stage Summary:
 - docs/phase3-preflight-checklist.md at revision 3 (495 lines); docs-only change; no implementation files touched; no probes run; D20 remains un-adopted and un-adoptable while the ToU gate is open.
 - Stopped for owner review as instructed; awaiting approval before any probe or provider code.
+
+---
+Task ID: 10
+Agent: main (Z.ai)
+Task: IMPLEMENTATION — universal media playback milestone (owner instruction): local files + provider-contract streams, strategy-based player, optional client-side conversion, dev-only demo page. No Phase 3 providers, no media relay.
+
+Work Log:
+- Baseline: installed deps from lockfile; verified 267/267 tests, typecheck/lint/build clean at HEAD f6c4031. Inspected POLICY/decisions/roadmap/architecture + core contract (PlaybackLink types already include 'dash').
+- Researched ffmpeg.wasm official docs BEFORE installing (versions, worker setup, toBlobURL loading, progress-experimental caveat); verified licenses on npm; read build flags from the pinned @ffmpeg/core@0.12.10 binary (GPL: --enable-gpl --enable-libx264 --enable-libvpx --enable-libvorbis --enable-libtheora --enable-libopus --enable-libmp3lame --enable-zlib).
+- REJECTED the registry's `dash.js@4.0.1` package (its typings are an unrelated React UI kit — not the MPEG-DASH player); adopted task-sanctioned Shaka Player 5.3.1 (Apache-2.0) for the `dash` link type. Recorded in D22.
+- Recorded decisions D21 (strategy-based player, NO relay, header/referer links = relay-required, local media never uploaded), D22 (dependency pins + lazy loading + GPL-core handling + conversion bounds), D23 (dev-only demo page + generated fixtures + lawful demo-stream provenance). D20 stays reserved for the pending Phase 3 authorization draft.
+- Implemented src/player/: types/errors, formatSupport (signature sniffing incl. EBML DocType parser; capability probes), playbackDecision (validate → relay-required → native → engine → conversion offer → typed failure; bounded fallback), localMedia (4 KiB head sniff; object-URL registry), srtToVtt, PlaybackController (state machine, quality sort via CORE helpers, bounded fallback with token-guarded attaches, subtitle pipeline, dispose), engines (native, hls.js lazy, shaka lazy) + registry (lazy factories), conversion (profiles from verified build table + lazy ffmpeg.wasm engine with progress/cancel/cleanup/bounds), React UI (MediaPlayer, LocalFilePicker, SourceSelector, SubtitleSelector, PlaylistPanel, ConversionPanel, usePlaybackController) + player.css.
+- Demo: vite dev page (npm run demo) with local picker, tiny generated fixtures (scripts/generate-fixtures.sh — MP4/WebM/Ogg/MKV/AVI/MOV/HLS/VTT/SRT, 1-2s each, no copyrighted material), authorized demo streams with provenance (Blender/Mux/Apple/Akamai/MDN), relay-required + unsupported demo entries; scripts/copy-ffmpeg-core.mjs self-hosts the GPL core into gitignored demo/public/ffmpeg-core/.
+- Tests: 5 new vitest files (format-support, decision, srt, conversion with fake wasm module, controller with fakes) + component tests (jsdom/RTL) — 341 total. Playwright e2e (chromium headless shell): local WebM playback with pause/resume, source-selector playback, relay-required with ZERO network requests, AVI honest limitation — 4 passed. Real VP9/Opus decode verified in-browser; H.264 paths documented as manual (OSS Chromium lacks proprietary codecs).
+- Fixed real defects found by tests/debug: EBML DocType raw-id comparison; handleFatal token bump (fallback vs late attach race); controller attachElement disposed-guard; post-attach status sync; same-origin relative URL acceptance with scheme rejection (javascript:/data:/ftp:); StrictMode dispose/swap hazard documented (demo runs without StrictMode; Phase 5 must record its own decision).
+
+Stage Summary:
+- src/player/ complete and independently testable; contract unchanged (no new media types; core helpers reused); 341/341 vitest + 4/4 Playwright green; tsc/eslint/build clean; demo build shows lazy chunks (main 352 KB; hls.js 564 KB + shaka 848 KB isolated).
+- NOT built: media relay (Phase 4 task 1), server-side transcoding, any provider, D20 adoption. Known limits + manual verification steps recorded in docs/media-compatibility.md.
+- Stopped for owner review as instructed.
