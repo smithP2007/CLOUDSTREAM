@@ -1,0 +1,15 @@
+
+> cloudstream-web-core@0.1.0 demo
+> vite --config vite.config.demo.ts
+
+
+  VITE v8.3.4  ready in 186 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+2:24:11 PM [vite] Internal server error: Failed to load url /ffmpeg-lib/index.js (resolved id: /ffmpeg-lib/index.js). This file is in /public and will be copied as-is during build without going through the plugin transforms, and therefore should not be imported from source code. It can only be referenced via HTML tags.
+      at loadAndTransform (file:///home/z/my-project/download/cloudstream-web/node_modules/vite/dist/node/chunks/node.js:20173:31)
+2:27:36 PM [vite] (client) page reload /home/z/my-project/download/cloudstream-web/src/player/conversion/ffmpegConversion.ts
+2:27:37 PM [vite] (client) dependencies optimized: @ffmpeg/ffmpeg, @ffmpeg/util
+2:27:44 PM [vite] (client) page reload /home/z/my-project/download/cloudstream-web/src/player/conversion/ffmpegConversion.ts
+2:27:44 PM [vite] (client) page reload /home/z/my-project/download/cloudstream-web/src/player/conversion/ffmpegConversion.ts

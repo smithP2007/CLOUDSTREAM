@@ -1,0 +1,9 @@
+
+> cloudstream-web-core@0.1.0 start
+> next start -p 3000
+
+▲ Next.js 16.4.2
+- Local:         http://localhost:3000
+- Network:       http://21.0.19.118:3000
+✓ Ready in 128ms
+✓ Running next.config.ts took 40ms
