@@ -186,3 +186,23 @@ Work Log:
 
 Stage Summary:
 - Player milestone complete: strategy-based src/player/, dev-only demo, no providers/no relay/no D20 adoption; all gates green (341 vitest, 4 e2e, tsc/lint/build). Stopped for owner review.
+
+---
+Task ID: 11
+Agent: main (Z.ai)
+Task: Post-implementation audit of the media-player milestone (commit 9b697e9) — commit inspection, REAL ffmpeg.wasm conversion run, core version/license audit, core-loading path review, docs update, full verification battery. No new features; no providers; no relay; D20 untouched.
+
+Work Log:
+- Inspected 9b697e9 (148 files, +11,100/−115): no node_modules, no stray media, no ffmpeg-core binaries committed; fixtures are script-generated synthetic testsrc/sine assets (19–68 KB). DEFECT: 88 compiled files under dist/player/ (715 KB) were committed as build output; dist/core/ (108 files) was already tracked from earlier environment auto-commits.
+- Ran the REAL conversion: initial E2E failed — core init ERROR_IMPORT_FAILURE. Root cause (verified in the pinned wrapper source + in-browser probes): @ffmpeg/ffmpeg 0.12.15 spawns a { type: "module" } worker where importScripts is unavailable; its fallback needs the ESM core (export default), but the product loaded the UMD core. Fixed DEFAULT_CORE_CDN_BASE (…/dist/esm) and scripts/copy-ffmpeg-core.mjs (copies dist/esm).
+- Verified REAL conversion end-to-end (Playwright Chromium + standalone diagnostic scripts/audit-ffmpeg-real.mjs): self-hosted core 200 (~0.4 s init), AVI (MPEG-4+MP3) → MP4 (H.264+AAC) exit 0, output decoded + played, progress events observed, mid-run Cancel → worker terminated → typed "Conversion cancelled." → engine rebuilt and converted again, virtual-FS cleanup ok, input SHA-256 unchanged, zero POST/PUT/PATCH, all requests on demo origin + documented demo-stream hosts.
+- Found + fixed "Convert and play" defect: addLocalBlob only auto-played into an empty playlist; now always plays the converted output (note set after playIndex so the decision pipeline doesn't clear it).
+- License audit (from the actual artifact): @ffmpeg/core 0.12.10 = GPL-2.0-or-later (npm field + --enable-gpl + libx264/libx265 embedded); full configure line extracted from the wasm (--disable-autodetect → exhaustive table: libx264/x265/vpx/mp3lame/theora/vorbis/opus/zlib/webp/freetype/fribidi/ass/zimg); binary output shows Lavf61.7.103/Lavc59.37.100 (FFmpeg 7.1 series) + x264 core 164; npm packages ship NO license file; wasm sha256 9f57947a… recorded.
+- Serving obligations documented (media-compatibility §5): serving the core to browsers = conveying → GPL-2.0 license text + corresponding-source links + notices required at deployment; devDependency status and git-exclusion do NOT remove them; local-only dev is exempt. CDN fallback pinned but fetched WITHOUT integrity verification — recorded gap; self-hosted pinned core recommended for deployment; CSP notes (blob: workers, 'wasm-unsafe-eval').
+- Updated docs/media-compatibility.md (real-run evidence, ESM-core finding, new §5 licensing record, manual list re-scoped) and docs/decisions.md (D22 amendment).
+- Full battery: 341/341 vitest, tsc clean, eslint 0, production build OK, Playwright 6/6 (incl. 2 real-conversion tests).
+
+Stage Summary:
+- Audit verdict: milestone works end-to-end; one real product defect (UMD core under module worker) fixed; one UX defect (convert-and-play) fixed; dist/ build output untracked + gitignored (hygiene commit); docs updated with verified evidence and GPL obligations.
+- Remaining (not done by design): no SRI on CDN fetch, no CSP on dev demo, MKV/MOV conversion runs + CDN-path run left as documented manual items, no providers/relay/D20 changes.
+- Stopped for owner review as instructed.
