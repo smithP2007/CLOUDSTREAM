@@ -99,11 +99,11 @@ Task: Push ALL project work to https://github.com/smithP2007/CLOUDSTREAM so a fu
 
 Work Log:
 - Verified green before push: vitest 187/187, tsc --noEmit clean, eslint clean, build clean (all run live).
-- Discovered workspace git root is /home/z/my-project (monorepo) whose history contains research/ (49MB upstream clones incl. closed-source AniKoto artifacts), .env (DATABASE_URL secret), tool-results/ — none of these may be redistributed.
+- Discovered workspace git root is /home/z/my-project (monorepo) whose history contains research/ (49MB upstream clones incl. closed-source AniKoto artifacts), a .env file holding a database credential (never committed to any push), tool-results/ — none of these may be redistributed.
 - Wrote handoff materials into the project: HANDOFF.md (AI continuation guide: rules, reading order, state, exact next task = Phase 2 steps 3-5, D17/D18 gotchas, worklog protocol), docs/worklog.md (full worklog copy + SHA note), .gitignore (node_modules/.env protection).
 - Committed 6077e12 in workspace repo, then `git subtree split -P download/cloudstream-web -b github-export` → clean 6-commit history with project at root (no upstream code, no secrets).
 - Pushed github-export → main on github.com/smithP2007/CLOUDSTREAM using the user's PAT inline (not stored in git config); verified ls-remote main = 822f52e (handoff tip).
-- Secret-scanned pushed history: no PAT, no DATABASE_URL. Added remote `cloudstream` (clean URL) for future pushes: `git push cloudstream github-export:main` after re-splitting.
+- Secret-scanned pushed history: no PAT, no database credential. Added remote `cloudstream` (clean URL) for future pushes: `git push cloudstream github-export:main` after re-splitting.
 
 Stage Summary:
 - GitHub repo smithP2007/CLOUDSTREAM main = 822f52e, 104 files, full readable history (Phase 1, Task A/D17, Task B/D18, handoff).
