@@ -7,6 +7,9 @@ assets are served to any other person, these become hard requirements.
 **2026-10-20 (D25):** the CSP/security-headers (§2) and core-integrity/notices (§1 partly,
 §3) items below were IMPLEMENTED and verified in this session; the remaining unchecked
 items stay honestly open.
+**2026-10-20 (D26):** the nonce-based CSP follow-up was IMPLEMENTED and verified: the
+production CSP is per-request (`script-src 'self' 'nonce-…' 'wasm-unsafe-eval' blob:` —
+NO `'unsafe-inline'`), served by `src/proxy.ts` from the shared builder.
 
 ---
 
@@ -56,27 +59,45 @@ artifacts as bytes and verifies their SHA-256 against the pinned digests BEFORE 
 instantiated; a mismatch throws the typed `conversion-core-integrity` error and nothing is
 loaded or executed. The CDN fallback core (§3) is covered by the same gate.
 
-## 2. Content Security Policy (CONFIGURED — D25, 2026-10-20)
+## 2. Content Security Policy (CONFIGURED — D25; NONCE-HARDENED — D26, 2026-10-20)
 
-**DONE (D25).** The Next.js app now serves a CSP plus the standard hardening headers
+**DONE (D25):** the Next.js app serves a CSP plus the standard hardening headers
 (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`,
-`Strict-Transport-Security` in production) on every route — pages AND API — via
-`next.config.ts` `headers()` from the pure builder `src/app/_lib/securityHeaders.ts`
-(one definition, unit-tested; dev-only relaxations (`'unsafe-eval'`, `ws:`) are
-provably absent from the production policy). Empirical verification: the app e2e
-suite asserts the served headers AND runs the whole product — including REAL
-ffmpeg.wasm conversion and Mux HLS playback — under the production CSP with zero
-CSP violations (tests/e2e-app/security-headers.spec.ts, conversion.spec.ts).
+`Strict-Transport-Security` in production) on every route — pages AND API.
 
-Required-and-verified policy shape: `default-src 'self'`; `script-src 'self'
-'unsafe-inline' 'wasm-unsafe-eval' blob:`; `style-src 'self' 'unsafe-inline'`;
-`img-src 'self' data:`; `media-src 'self' blob:` + the authorized demo hosts;
-`connect-src 'self' blob:` + demo hosts + `unpkg.com`; `worker-src 'self'`;
-`object-src 'none'`; `base-uri 'self'`; `form-action 'self'`; `frame-ancestors 'none'`.
+**DONE (D26):** the CSP is now PER-REQUEST and nonce-based — the D25 recorded
+`'unsafe-inline'` script-src limitation is CLOSED:
+- `src/proxy.ts` (Next.js 16 proxy — the renamed middleware) generates a fresh 128-bit
+  nonce per request (base64url, CSP `nonce-source` grammar), builds the policy from the
+  SAME pure builder (`src/app/_lib/securityHeaders.ts`), hands it to Next.js via the
+  request headers (Next stamps its inline bootstrap/runtime scripts with it), and serves
+  it on the response.
+- Production `script-src` = `'self' 'nonce-…' 'wasm-unsafe-eval' blob:` — NO
+  `'unsafe-inline'`. An injected inline `<script>` without the per-request nonce cannot
+  execute (empirically: all served script tags carry the response-policy nonce; two
+  requests get different nonces; asserted in tests/e2e-app/security-headers.spec.ts).
+- Static optimization is intentionally disabled (`force-dynamic` in the root layout) —
+  a per-request nonce cannot be baked into prerendered HTML; recorded trade-off (D26).
+- The static `next.config.ts` `headers()` keeps only the nonce-independent hardening
+  headers (incl. HSTS); the CSP is never duplicated statically.
+- Dev mode keeps the recorded relaxations (`'unsafe-eval'`, `ws:`) provably absent from
+  the production policy (unit-tested + e2e-asserted).
+- Empirical verification: the app e2e suite asserts the served headers AND runs the whole
+  product — including REAL ffmpeg.wasm conversion — under the production nonce CSP with
+  zero CSP violations (25/25 app e2e, 2026-10-20).
+
+Required-and-verified policy shape (production, per request):
+`default-src 'self'`; `script-src 'self' 'nonce-…' 'wasm-unsafe-eval' blob:`;
+`style-src 'self' 'unsafe-inline'`; `img-src 'self' data:`; `media-src 'self' blob:` +
+the authorized demo hosts; `connect-src 'self' blob:` + demo hosts + `unpkg.com`;
+`worker-src 'self'`; `object-src 'none'`; `base-uri 'self'`; `form-action 'self'`;
+`frame-ancestors 'none'`.
 
 Directive evidence (each relaxation verified empirically, not assumed):
-- `'unsafe-inline'` in script-src: Next.js inline bootstrap requires it — REMAINING
-  limitation until a nonce-based CSP (middleware) is adopted; recorded follow-up.
+- `style-src 'unsafe-inline'`: REMAINING — style ATTRIBUTES and Next.js-injected style
+  elements require it; removing it needs nonce'd/moved styles across the whole UI
+  (separate recorded follow-up; D26 scoped to script-src). Script execution is
+  unaffected by style-src.
 - `'wasm-unsafe-eval'`: ffmpeg.wasm compilation. Does NOT enable general JS `eval`
   (D19's no-JS-execution rule is unaffected — `eval`/`new Function`/`node:vm`
   remain absent from the codebase).

@@ -8,6 +8,16 @@ import type { Metadata, Viewport } from 'next';
 import { SiteHeader } from './_components/SiteHeader';
 import './globals.css';
 
+/**
+ * D26: the nonce-based CSP (src/proxy.ts) requires every page to be
+ * dynamically rendered — a per-request nonce cannot be baked into statically
+ * prerendered HTML. Recorded trade-off: static optimization / ISR are
+ * intentionally disabled; the catalog already comes from the in-process
+ * provider host (runtime kill switch), so per-request rendering is
+ * semantically honest.
+ */
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: {
     default: 'CloudStream Web',

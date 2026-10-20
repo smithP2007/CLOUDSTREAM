@@ -117,24 +117,25 @@ Deterministic mock data: `src/server/providers/mock/` (fictional titles, local S
 provenance). Route segments carrying provider data are canonical base64url tokens — opacity
 preserved. React StrictMode is ON (D24); the player hook is StrictMode-safe and pinned by tests.
 
-Deployment hardening (D25): every route serves a CSP + security headers from the unit-tested
-builder `src/app/_lib/securityHeaders.ts`, and the conversion engine verifies the fetched
-ffmpeg.wasm core's SHA-256 against the audited pinned digests before loading it (fail-closed).
-Remaining deployment obligations (GPL source offer, nonce-CSP follow-up):
-`docs/deployment-requirements.md`.
+Deployment hardening (D25 + D26): every route serves a CSP + security headers from the
+unit-tested builder `src/app/_lib/securityHeaders.ts` — since D26 the CSP is per-request
+(nonce) via the Next 16 proxy (`src/proxy.ts`): production `script-src` carries a nonce and
+NO `'unsafe-inline'`. The conversion engine verifies the fetched ffmpeg.wasm core's SHA-256
+against the audited pinned digests before loading it (fail-closed). Remaining deployment
+obligations (GPL source offer, style-src nonce follow-up): `docs/deployment-requirements.md`.
 
 ```bash
 npm run dev        # next dev on :3000
 npm run build:app  # next build (production)
 npm run start      # next start on :3000
-npm test           # vitest — 410 tests (incl. catalog/codec/library/prefs/UI/security suites)
+npm test           # vitest — 414 tests (incl. catalog/codec/library/prefs/UI/security suites)
 ```
 
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (410 tests: provider/HTTP/parsing suites + player + Phase 5 app suites + D25 security)
+npm test        # vitest (414 tests: provider/HTTP/parsing suites + player + Phase 5 app suites + D25/D26 security)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

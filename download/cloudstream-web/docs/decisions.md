@@ -625,6 +625,64 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 
 ---
 
+## D26 — Nonce-based Content-Security-Policy (closes the D25 recorded follow-up)
+
+- **Status:** Adopted (2026-10-20). Closes the D25 recorded `'unsafe-inline'`
+  script-src limitation. Non-gated: touches NO provider work (D20), no relay (D8), and
+  weakens nothing in the D18/D19 machinery — the policy shape is the D25 policy minus
+  `'unsafe-inline'` plus a per-request nonce.
+- **Context:** D25 shipped the CSP statically from `next.config.ts` `headers()`; Next.js's
+  inline bootstrap/runtime scripts then require `script-src 'unsafe-inline'`, which was
+  recorded (not silently accepted) as the follow-up hardening step.
+- **Decision:**
+  1. **CSP moves to a per-request policy served by the Next.js 16 proxy** —
+     `src/proxy.ts` (Next 16 renamed middleware → proxy; `PROXY_FILENAME = 'proxy'`
+     verified in the installed next 16.4.2). The proxy generates a fresh 128-bit nonce
+     (`src/app/_lib/nonce.ts`, Web Crypto, base64url alphabet WITHOUT `=` padding — the
+     CSP `nonce-source` grammar), builds the policy from the SAME pure builder
+     (`buildContentSecurityPolicy(environment, { nonce })`), sets it on the REQUEST
+     headers (`Content-Security-Policy` + `x-nonce` — Next.js extracts the nonce from the
+     request CSP header and stamps its own inline scripts), and attaches it to the
+     response. Production `script-src` is now `'self' 'nonce-…' 'wasm-unsafe-eval' blob:`
+     — an injected inline script WITHOUT the per-request nonce cannot execute.
+  2. **One builder, two pinned shapes.** The nonce-less form remains the recorded D25
+     baseline (unit tests pin both). No `'strict-dynamic'` yet — a deliberate, recorded
+     scope limit; `'self'` stays valid for scripts.
+  3. **Static headers() no longer serves a CSP.** `next.config.ts` keeps only the
+     nonce-independent hardening headers (X-Content-Type-Options, X-Frame-Options,
+     Referrer-Policy, Permissions-Policy, HSTS). A duplicated static CSP would intersect
+     with the per-request one and carries no nonce.
+  4. **Matcher:** everything except `_next/static`, `_next/image`, `favicon.ico` — pages,
+     `/api/*`, `/ffmpeg-lib/worker.js` (the worker's OWN response policy must keep the
+     blob: sources — D25 evidence), posters and core assets. The static hardening headers
+     continue to cover every path including the excluded ones.
+  5. **Dynamic rendering forced** (`export const dynamic = 'force-dynamic'` in the root
+     layout): a per-request nonce cannot be baked into prerendered HTML, so static
+     optimization/ISR are intentionally disabled — recorded trade-off; the catalog comes
+     from the in-process provider host with a runtime kill switch, so per-request
+     rendering is semantically honest. `next build` confirms every route is
+     server-rendered on demand and the proxy is registered.
+  6. **Verified gotcha (recorded for future sessions):** browsers HIDE the nonce content
+     attribute after parsing — `getAttribute('nonce')` returns `''` and the serialized
+     markup shows `nonce=""`, while the IDL property `script.nonce` still reports the
+     parsed value. The e2e reads the IDL property.
+- **Evidence (empirical, 2026-10-20):** served HTML carries the response-policy nonce on
+  ALL script tags (inline and external; asserted in e2e); two requests get different
+  nonces; `/api/providers/health` carries the nonce policy; `/ffmpeg-lib/worker.js`
+  carries a blob:-capable policy; the whole app e2e suite — including the REAL
+  ffmpeg.wasm conversion — passes with zero CSP violations under the nonce policy.
+  Development mode verified separately: nonce + the recorded dev relaxations
+  (`'unsafe-eval'`, `ws:`), zero CSP violations in a real browser.
+- **Consequences:** verified battery 2026-10-20 — vitest 414/414 (24 files; +2 nonce
+  grammar/uniqueness, +1 nonce-CSP shape, +1 no-static-CSP), tsc/eslint/library-build/
+  next-build clean, app e2e **25/25** (the 3 new headers tests: per-request freshness,
+  rendered-page nonce stamping, worker-file policy), demo e2e 6/6. Remaining honestly
+  open: the operator's GPL complete-corresponding-source offer (§1), `style-src
+  'unsafe-inline'` (style attributes — separate recorded follow-up), and the Phase 7
+  full NOTICE audit.
+
+---
+
 ## Open future decisions (summary)
 
 | ID | Topic | Gate |

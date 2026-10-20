@@ -46,7 +46,7 @@ and what to build next. Full history of every work session is in
   a deterministic mock fixture provider, wired ONLY through `ProviderHost` + `LinkPipeline` +
   the D19 observability wrapper. The Phase 3 gate (D20) is UNTOUCHED and still requires owner
   approval; the media relay (Phase 4 task 1, D8) is still not built.
-- **Tests: 410/410 vitest** across 24 files + **22/22 app e2e** (Playwright against the
+- **Tests: 414/414 vitest** across 24 files + **25/25 app e2e** (Playwright against the
   PRODUCTION `next build` via `next start`, under the production CSP) + **6/6 demo e2e**
   (includes 2 REAL ffmpeg.wasm conversion runs). NOTE: vitest must collect `.tsx` (include
   `*.test.{ts,tsx}`) — an earlier pattern silently skipped the component suites; do not
@@ -56,9 +56,15 @@ and what to build next. Full history of every work session is in
   `blob:` relaxations empirically verified), ffmpeg core SHA-256 verification DEFAULT-ON in
   the conversion engine (fail-closed `conversion-core-integrity`;
   `src/player/conversion/pinned-core-hashes.json` = the Task 11 audit digests), notices
-  committed (`notices/`), `npm run verify:core` tooling. Remaining: operator GPL
-  source-offer (deployment-requirements §1), nonce-based CSP follow-up, Phase 7 NOTICE
-  audit. The Phase 3 gate (D20) is UNTOUCHED; the media relay (D8) is still not built.
+  committed (`notices/`), `npm run verify:core` tooling.
+- **D26 nonce CSP (2026-10-20):** the CSP is PER-REQUEST via `src/proxy.ts` (Next 16
+  proxy = renamed middleware): production `script-src 'self' 'nonce-…' 'wasm-unsafe-eval'
+  blob:` with NO `'unsafe-inline'`; pages are `force-dynamic` (recorded trade-off); the
+  static `headers()` keeps only the nonce-independent hardening headers. Verified gotcha:
+  read nonces via `script.nonce` (IDL) — browsers hide the content attribute after parse.
+  Remaining: operator GPL source-offer (deployment-requirements §1), `style-src
+  'unsafe-inline'` follow-up, Phase 7 NOTICE audit. The Phase 3 gate (D20) is UNTOUCHED;
+  the media relay (D8) is still not built.
 - **Verification battery:** `npm test` + `npm run typecheck` + `npm run lint` +
   `npm run build` (library → dist/) + `npm run build:app` (next build) + `npm run e2e` +
   `npm run e2e:app` — all green at handoff.
@@ -72,6 +78,7 @@ and what to build next. Full history of every work session is in
   - `src/server/providers/mock/` — deterministic fixture `Provider` + catalog data (app/tests only, never auto-registered)
   - `src/server/catalog/` — Phase 5 data-access layer + app runtime (kill switch, health, wrapped providers, pipeline)
   - `src/player/` — playback stack (+ `conversion/next-shims/` Turbopack alias targets)
+  - `src/proxy.ts` — the D26 nonce-CSP proxy (Next 16 middleware convention)
   - `src/app/` — the Next.js app (pages, `_components`, `_lib`, `api/`) — EXCLUDED from the library build
   - `demo/` — dev-only player page; `public/posters/` — committed catalog SVGs;
     `public/fixtures/` + `public/ffmpeg-lib/` — gitignored runtime copies (staging scripts)

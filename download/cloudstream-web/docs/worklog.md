@@ -250,3 +250,26 @@ Stage Summary:
 - Gates untouched: D20 (Phase 3), D8 (relay), D18/D19 machinery; no upstream code.
 - Remaining honestly open: operator GPL complete-corresponding-source offer (deployment-requirements §1), nonce-based CSP follow-up, Phase 7 full NOTICE audit, MKV/MOV CDN-path manual items.
 - Stopped for owner review.
+
+---
+Task ID: 14
+Agent: main (Z.ai)
+Task: D26 — nonce-based Content-Security-Policy (the D25 recorded follow-up; the authoritative non-gated queue item after Task 13).
+
+Work Log:
+- Gate check first: Phase 3 (D20) and the media relay (D8) remain owner-gated; the D25-recorded follow-up list named the nonce CSP explicitly — chosen as the task.
+- Verified the Next.js 16 mechanism before writing code: next 16.4.2 ships `PROXY_FILENAME = 'proxy'` (middleware renamed); official CSP guide: middleware/proxy sets the policy on REQUEST headers (Content-Security-Policy + x-nonce) so Next stamps its inline bootstrap scripts, and on the response; nonce requires dynamic rendering.
+- src/app/_lib/nonce.ts: 128-bit Web-Crypto nonce, base64url alphabet WITHOUT '=' padding (CSP nonce-source grammar); unit-pinned (charset, no padding, >=20 chars, 64/64 unique).
+- src/app/_lib/securityHeaders.ts extended: buildContentSecurityPolicy(env, { nonce }) — nonce variant = script-src 'self' 'nonce-…' 'wasm-unsafe-eval' blob: (NO 'unsafe-inline'); nonce-less form kept as the recorded D25 baseline; buildSecurityHeaders now serves ONLY the nonce-independent hardening headers (CSP removed — a static duplicate would intersect and carry no nonce).
+- src/proxy.ts: per-request nonce + shared-builder CSP on request and response; matcher excludes only _next/static, _next/image, favicon.ico — /api/*, /ffmpeg-lib/worker.js (worker's own blob:-capable policy), posters and core assets stay covered.
+- src/app/layout.tsx: export const dynamic = 'force-dynamic' (recorded trade-off: per-request nonce is incompatible with static prerendering; in-process provider host + runtime kill switch make per-request rendering semantically honest). next build confirms every route server-rendered on demand + Proxy registered.
+- e2e hardening (tests/e2e-app/security-headers.spec.ts rebuilt, 3→6 tests): nonce policy on pages + API, script-src WITHOUT 'unsafe-inline' (scoped to the script-src directive — style-src keeps its separate recorded relaxation), per-request nonce freshness, rendered-page stamping (every inline script carries the RESPONSE policy nonce), /ffmpeg-lib/worker.js blob: policy, zero-violation home render.
+- Verified gotcha recorded in D26: browsers HIDE the nonce content attribute after parsing (getAttribute('nonce') → '' / markup nonce="") — the IDL property script.nonce still reports it; first e2e run failed on getAttribute, fixed by reading the IDL property (page HTML itself was fully nonced — verified via curl).
+- Dev posture re-verified: next dev serves nonce + 'unsafe-eval' + ws:, real-browser check = zero CSP violations.
+- Docs: decision D26 (mechanism, matcher, trade-offs, gotcha, evidence); deployment-requirements.md §2 (nonce DONE, style-src listed as remaining); HANDOFF.md counts + D26 bullet + layout entry; both READMEs counts/status.
+- Battery (actual): vitest 414/414 (24 files; +2 nonce grammar/uniqueness, +1 nonce-CSP shape, +1 no-static-CSP), tsc clean, eslint clean, library build clean, next build clean (all dynamic + proxy), app e2e 25/25 vs PRODUCTION build under the production nonce CSP (incl. REAL conversion), demo e2e 6/6.
+
+Stage Summary:
+- D26 landed: production CSP is per-request and nonce-based; 'unsafe-inline' is GONE from script-src; dev relaxations unchanged and provably production-absent.
+- Gates untouched: D20 (Phase 3), D8 (relay), D18/D19 machinery; no upstream code.
+- Remaining honestly open: operator GPL complete-corresponding-source offer (§1), style-src 'unsafe-inline' (style attributes — separate follow-up), Phase 7 full NOTICE audit.

@@ -32,17 +32,18 @@ decision/worklog records alone.
 - **Phase 5 complete, awaiting owner review** — the Next.js 16 web application (D24):
   home / search / details / watch / library / providers over a deterministic mock fixture
   provider, wired exclusively through `ProviderHost` + `LinkPipeline` + observability.
-- **Deployment hardening complete (D25, 2026-10-20)** — CSP + security headers on every
-  route, SHA-256 integrity verification for the ffmpeg.wasm core (fail-closed, pinned to
-  the audited digests), GPL/MIT notices vendored in `notices/`, `npm run verify:core`
-  tooling. Closes the non-gated items of `docs/deployment-requirements.md` (§2, §3, §1
-  partly — the GPL complete-corresponding-source offer stays an operator deployment
-  action).
+- **Deployment hardening complete (D25 + D26, 2026-10-20)** — CSP + security headers on every
+  route, now NONCE-based (D26: per-request CSP via the Next 16 proxy, `script-src` carries a
+  nonce and NO `'unsafe-inline'`), SHA-256 integrity verification for the ffmpeg.wasm core
+  (fail-closed, pinned to the audited digests), GPL/MIT notices vendored in `notices/`,
+  `npm run verify:core` tooling. Closes the non-gated items of
+  `docs/deployment-requirements.md` (§2, §3, §1 partly — the GPL
+  complete-corresponding-source offer stays an operator deployment action).
 - **Gated by design (do not start without owner approval):** Phase 3 real providers
   (D20 approval process + pre-flight checklist) and Phase 4 task 1 media relay (D8 scope).
-- **Verification at handoff:** 410/410 vitest (24 files), 22/22 app e2e (production build,
-  under the production CSP), 6/6 demo e2e (incl. 2 real ffmpeg.wasm conversion runs through
-  the verified path), tsc / eslint / library build / next build green.
+- **Verification at handoff:** 414/414 vitest (24 files), 25/25 app e2e (production build,
+  under the production nonce CSP), 6/6 demo e2e (incl. 2 real ffmpeg.wasm conversion runs
+  through the verified path), tsc / eslint / library build / next build green.
 
 ## Quick start
 

@@ -268,3 +268,23 @@ Stage Summary:
 - D25 complete and verified; deployment-requirements non-gated items closed (§2, §3; §1 partly — GPL source offer remains an operator action).
 - Phase 3 (D20) and Phase 4 relay (D8) remain gated — next roadmap task is still the owner decision on those gates.
 - Committed and pushed to GitHub main.
+
+---
+Task ID: 16
+Agent: main (Z.ai)
+Task: "Start + show the webapp at the end" — implemented D26 nonce-based CSP (the D25 recorded follow-up, authoritative non-gated queue), then started the webapp. Full record in download/cloudstream-web/docs/worklog.md Task 14.
+
+Work Log:
+- Gate check first: Phase 3 (D20) and relay (D8) remain owner-gated; D25's recorded follow-up list named the nonce CSP — chosen as the task.
+- Verified Next 16 mechanism pre-code: proxy convention (PROXY_FILENAME='proxy' in next 16.4.2), request-header CSP + x-nonce propagation, dynamic-rendering requirement.
+- Implementation: src/app/_lib/nonce.ts (128-bit Web Crypto, base64url-no-padding = CSP nonce-source grammar); securityHeaders.ts buildContentSecurityPolicy(env, {nonce}) — nonce variant drops 'unsafe-inline'; buildSecurityHeaders keeps only nonce-independent headers; src/proxy.ts per-request CSP (matcher covers pages, /api/*, /ffmpeg-lib/worker.js; excludes _next/static, _next/image, favicon.ico); root layout force-dynamic (recorded trade-off).
+- e2e rebuilt 3→6 tests: nonce policy on pages+API, no 'unsafe-inline' in script-src (scoped — style-src keeps its separate recorded relaxation), per-request nonce freshness, inline scripts stamped with the response-policy nonce, worker.js blob: policy, zero-violation render.
+- Verified gotcha (recorded in D26): browsers hide the nonce content attribute after parse — getAttribute('nonce')='' but script.nonce (IDL) retains it; e2e reads the IDL property.
+- Dev posture re-verified (nonce + 'unsafe-eval' + ws:, zero violations in a real browser).
+- Docs: D26 decision; deployment-requirements §2; HANDOFF; both READMEs.
+- Battery (actual): vitest 414/414 (24 files), tsc/eslint/library-build/next-build clean (all routes dynamic + Proxy registered), app e2e 25/25 (production build, production nonce CSP, incl. REAL conversion), demo e2e 6/6.
+
+Stage Summary:
+- D26 complete and verified; production script-src is now nonce-based with NO 'unsafe-inline'.
+- Phase 3 (D20) and Phase 4 relay (D8) remain gated — still owner decisions.
+- Webapp started at the end of the task for the owner (production build via next start).

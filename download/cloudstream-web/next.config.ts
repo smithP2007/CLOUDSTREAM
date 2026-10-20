@@ -13,12 +13,15 @@
  *   see src/player/usePlaybackController.ts and the component test that pins
  *   the no-duplicate-playlist-entry behavior under StrictMode).
  *
- * - Security headers + CSP are wired through `headers()` from the pure
- *   builder in `src/app/_lib/securityHeaders.ts` (decision D25) — one
- *   definition shared with the unit tests. Remaining recorded limitations
- *   (unsafe-inline until a nonce CSP, unpkg connect-src for the verified CDN
- *   fallback) live in that module's docblock and
- *   docs/deployment-requirements.md.
+ * - Security headers are wired through `headers()` from the pure builder in
+ *   `src/app/_lib/securityHeaders.ts` (decision D25) — one definition shared
+ *   with the unit tests. Since D26 the Content-Security-Policy is NOT served
+ *   from here: it is per-request (nonce-based) and served by `src/proxy.ts`,
+ *   built from the SAME builder. The static `headers()` below serves the
+ *   nonce-independent hardening headers (X-Content-Type-Options,
+ *   X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS). Remaining
+ *   recorded limitation (unpkg connect-src for the verified CDN fallback)
+ *   lives in the builder's docblock and docs/deployment-requirements.md.
  * - Image optimizer domains stay unconfigured (the app uses plain <img> +
  *   local SVG posters).
  */
@@ -35,6 +38,9 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/:path*',
+        // Non-CSP hardening headers only — the CSP is per-request via
+        // src/proxy.ts (D26) and MUST NOT be duplicated here (two CSP
+        // headers would intersect and the static one would have no nonce).
         headers: buildSecurityHeaders(environment).map((header) => ({
           key: header.key,
           value: header.value,
