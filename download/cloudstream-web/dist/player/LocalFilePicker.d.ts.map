@@ -1,1 +1,0 @@
-{"version":3,"file":"LocalFilePicker.d.ts","sourceRoot":"","sources":["../../src/player/LocalFilePicker.tsx"],"names":[],"mappings":"AAAA;;;;GAIG;AAIH,MAAM,WAAW,oBAAoB;IACnC,OAAO,CAAC,KAAK,EAAE,IAAI,EAAE,GAAG,IAAI,CAAC;IAC7B,8FAA8F;IAC9F,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,QAAQ,CAAC,EAAE,OAAO,CAAC;CACpB;AAID,wBAAgB,eAAe,CAAC,EAAE,OAAO,EAAE,MAAuB,EAAE,QAAgB,EAAE,EAAE,oBAAoB,+BAoD3G"}

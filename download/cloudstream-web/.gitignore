@@ -7,3 +7,4 @@ demo/public/ffmpeg-core/
 demo/dist-demo/
 test-results/
 playwright-report/
+dist/
