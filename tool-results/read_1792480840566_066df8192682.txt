@@ -1,0 +1,429 @@
+     1→     1→# Decision Record
+     2→     2→
+     3→     3→Format: lightweight ADR. Each decision has an ID, status, context, decision, and consequences.
+     4→     4→IDs ending in **-F** are *future decisions* — deliberately left open; they must be resolved by an
+     5→     5→explicit new entry, never silently by implementation drift.
+     6→     6→
+     7→     7→Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `docs/provider-architecture.md`,
+     8→     8→`docs/web-compatibility-report.md` (findings tagged VERIFIED/INFERRED/UNKNOWN at
+     9→     9→`recloudstream/cloudstream@eb962b4`).
+    10→    10→
+    11→    11→---
+    12→    12→
+    13→    13→## D1 — Product target: browser-based media application for PC
+    14→    14→
+    15→    15→- **Status:** Adopted (Phase 0)
+    16→    16→- **Context:** CloudStream's architecture (provider contract + host services) is portable as a
+    17→    17→  specification; its Android/Kotlin code and `.cs3` plugins are not browser-executable
+    18→    18→  (`web-compatibility-report.md` §1). A PC-browser product needs server-side providers regardless.
+    19→    19→- **Decision:** Build a browser-based media application (movies, series, anime) for PC use. The web
+    20→    20→  UI runs in the browser; provider adapters and all network fetching run server-side. No Android app,
+    21→    21→  no desktop-native shell.
+    22→    22→- **Consequences:** CORS is neutralized by server-side fetching; playback must solve media-CORS via a
+    23→    23→  relay (Phase 4). Mobile/casting/download features are out of scope until a new decision.
+    24→    24→
+    25→    25→## D2 — Initial deployment: private / self-hosted MVP
+    26→    26→
+    27→    27→- **Status:** Adopted (Phase 0)
+    28→    28→- **Context:** Deployment audience drives proxy exposure, auth, and abuse controls
+    29→    29→  (`implementation-roadmap.md` Phase 0 task 2). Public deployment raises legal exposure (risk
+    30→    30→  register #1, #9).
+    31→    31→- **Decision:** Launch as a private, self-hosted MVP for the operator (and directly invited users).
+    32→    32→  Authentication is still required on media relay and admin surfaces.
+    33→    33→- **Consequences:** Reduced (not eliminated) abuse exposure; takedown contact becomes mandatory only
+    34→    34→  when a second party accesses the deployment (`POLICY.md` §6).
+    35→    35→- **D2-F (future decision):** any public or shared deployment. Gate: legal review of the actual
+    36→    36→  content-source set in use + abuse controls + takedown contact. **Unresolved.**
+    37→    37→
+    38→    38→## D3 — Initial content sources: lawful categories only
+    39→    39→
+    40→    40→- **Status:** Adopted (Phase 0)
+    41→    41→- **Context:** Legal/copyright is the Critical risk (risk register #1). The official upstream
+    42→    42→  extension repo ships only open-API platform providers (Dailymotion, InternetArchive, Invidious,
+    43→    43→  Twitch, YouTube — VERIFIED), proving a lawful-category provider set is viable.
+    44→    44→- **Decision:** Initial providers target: (1) public-domain content; (2) Creative Commons or
+    45→    45→  similarly licensed content; (3) the operator's personal media; (4) services whose APIs and terms
+    46→    46→  permit the intended use (verified per-service before implementation). Nothing else.
+    47→    47→- **Consequences:** Every new provider needs a category check + terms review before code is written;
+    48→    48→  the provider registry records its source category for auditability.
+    49→    49→- **D3-F (future decision):** any provider outside these categories (e.g. an AniKoto-style anime
+    50→    50→  aggregator observing public endpoints). Gate: explicit legal review of the endpoints' terms and
+    51→    51→  jurisdictions, then a superseding decision. **Unresolved; deliberately deferred.**
+    52→    52→
+    53→    53→## D4 — No copying of upstream CloudStream implementation code
+    54→    54→
+    55→    55→- **Status:** Adopted (Phase 0)
+    56→    56→- **Context:** Upstream is GPL-3.0 (`repository-analysis.md` §6, VERIFIED). Copying code would force
+    57→    57→  this project to GPL-3.0 and complicate any future licensing choice.
+    58→    58→- **Decision:** Clean-room TypeScript implementation. Upstream (and the `research/` clones) are used
+    59→    59→  read-only as an architectural/behavioral specification, cited in `docs/`. No upstream source is
+    60→    60→  vendored, translated line-by-line, or executed by this project.
+    61→    61→- **Consequences:** Documentation citations refer to upstream paths/lines for *behavior* only;
+    62→    62→  implementation is written from `docs/` descriptions. License remains freely choosable (D15-F).
+    63→    63→
+    64→    64→## D5 — No reuse or decompilation of the closed-source AniKoto `.cs3`
+    65→    65→
+    66→    66→- **Status:** Adopted (Phase 0)
+    67→    67→- **Context:** AniKoto is distributed only as a compiled `.cs3` with **no license** (all rights
+    68→    68→  reserved) — reuse or decompilation-derived code is legally unusable
+    69→    69→  (`web-compatibility-report.md` §4, VERIFIED). Investigation used static inspection only; the package
+    70→    70→  was never executed.
+    71→    71→- **Decision:** No reuse, redistribution, or decompilation-derived code from AniKoto or any other
+    72→    72→  closed-source/unlicensed extension. If an anime aggregator provider is ever built, it is written
+    73→    73→  from public-endpoint behavior observation only — and only after D3-F is resolved.
+    74→    74→- **Consequences:** AniKoto stays a *reference architecture example* in `docs/`; no strings, assets,
+    75→    75→  or code from the binary enter this repository.
+    76→    76→
+    77→    77→## D6 — Clean-room TypeScript provider implementation
+    78→    78→
+    79→    79→- **Status:** Adopted (Phase 0, implemented Phase 1)
+    80→    80→- **Context:** The portable asset is the contract (`MainAPI` semantics + data shapes, VERIFIED in
+    81→    81→  `provider-architecture.md` §1–2), not the code. TypeScript/Next.js is the chosen stack for the web
+    82→    82→  target.
+    83→    83→- **Decision:** Providers are first-party TypeScript modules implementing the Phase 1 contract
+    84→    84→  (`src/core/provider.ts`). Host services (error boundary, timeouts with `AbortSignal` cancellation,
+    85→    85→  dedupe, quality sort, validation) are owned by the host, mirroring the verified upstream
+    86→    86→  host-side responsibilities (`APIRepository.kt`, `RepoLinkGenerator.kt`).
+    87→    87→- **Consequences:** Provider return data is untrusted input at the boundary and is Zod-validated;
+    88→    88→  provider *code* is first-party and reviewed like any other source file. Terminology diverges from
+    89→    89→  upstream where TypeScript ergonomics demand it (see D10, D11).
+    90→    90→
+    91→    91→## D7 — No DRM circumvention
+    92→    92→
+    93→    93→- **Status:** Adopted (Phase 0)
+    94→    94→- **Context:** Upstream's contract carries Widevine/PlayReady/ClearKey constants
+    95→    95→  (`ExtractorApi.kt:471–490`, VERIFIED); implementing DRM bypass is legally and ethically out of
+    96→    96→  bounds, and Widevine requires licensed CDMs the project cannot obtain.
+    97→    97→- **Decision:** The project implements no DRM circumvention. The Phase 1 playback-link type has **no
+    98→    98→  DRM variant** (upstream `DrmExtractorLink` is deliberately not ported). Encrypted-media scope is
+    99→    99→  limited to what the browser stack handles natively for permitted content (e.g. AES-128 HLS via
+   100→   100→  hls.js).
+   101→   101→- **D7-F (future decision):** ClearKey via EME for content the operator is licensed to decrypt.
+   102→   102→  Default: not implemented. **Unresolved.**
+   103→   103→
+   104→   104→## D8 — No unrestricted streaming proxies
+   105→   105→
+   106→   106→- **Status:** Adopted (Phase 0)
+   107→   107→- **Context:** A same-origin media relay is architecturally required for browser playback
+   108→   108→  (`web-compatibility-report.md` §5, INFERRED), but an open relay is an abuse hotspot (risk #9) and a
+   109→   109→  legal liability.
+   110→   110→- **Decision:** No unrestricted streaming proxy. The future relay (Phase 4) is scoped: authenticated
+   111→   111→  users, per-user quotas, request/range caps, referer/header injection restricted to provider-declared
+   112→   112→  values, no cross-user caching of protected media, no arbitrary-URL forwarding, provider kill switch.
+   113→   113→- **Consequences:** Playback availability is bounded by the relay's controls; "it would be more
+   114→   114→  reliable as an open proxy" is not an acceptable argument at any phase.
+   115→   115→
+   116→   116→## D9 — Investigation findings are the specification; evidence tags are normative
+   117→   117→
+   118→   118→- **Status:** Adopted (investigation phase)
+   119→   119→- **Context:** The four documents in `docs/` tag findings VERIFIED / INFERRED / UNKNOWN and cite
+   120→   120→  upstream paths/lines at a pinned commit.
+   121→   121→- **Decision:** Implementation follows the documented, verified semantics. Where implementation
+   122→   122→  *cannot* follow them (TypeScript ergonomics, browser runtime differences), the divergence is
+   123→   123→  recorded as a decision in this file — not silently introduced.
+   124→   124→- **Consequences:** Divergences so far: D10 (enum encoding), D11 (naming), D12 (schema strictness).
+   125→   125→
+   126→   126→## D10 — Enums are string literals, not upstream ordinals
+   127→   127→
+   128→   128→- **Status:** Adopted (Phase 1)
+   129→   129→- **Context:** Upstream `TvType` (MainAPI.kt:1120) assigns ordinal numbers 1–18; `DubStatus` and
+   130→   130→  `SearchQuality` are plain enums. Numbers are an upstream serialization detail; string literals are
+   131→   131→  debuggable and self-describing in JSON APIs.
+   132→   132→- **Decision:** `TvType`, `DubStatus`, `SearchQuality`, and link types are **string literal unions**
+   133→   133→  with the upstream member names (`Movie`, `AnimeMovie`, `TvSeries`, …). The upstream ordinal mapping
+   134→   134→  is not carried; if drop-in `.cs3`-repo metadata compatibility is ever needed, a mapping table can be
+   135→   135→  added then.
+   136→   136→- **Consequences:** Wire format is human-readable; providers must use the exact literal names.
+   137→   137→
+   138→   138→## D11 — Naming divergences from upstream (deliberate)
+   139→   139→
+   140→   140→- **Status:** Adopted (Phase 1)
+   141→   141→- **Context:** TypeScript contract readability vs upstream Kotlin names.
+   142→   142→- **Decision:**
+   143→   143→  - `ExtractorLink` → **`PlaybackLink`**; `ExtractorLinkType` → **`PlaybackLinkType`**
+   144→   144→    (`'video' | 'hls' | 'dash'`), with upstream `TORRENT`/`MAGNET` excluded from v1 (upstream itself
+   145→   145→    marks them "No support at the moment", `ExtractorApi.kt:427–431`).
+   146→   146→  - `apiName` → **`providerName`**.
+   147→   147→  - `HomePageList` stays, with **`HomeRow`** exported as an alias.
+   148→   148→  - Upstream `LoadResponse`'s five variants collapse to **four** (`movie`, `tvSeries`, `anime`,
+   149→   149→    `liveStream`), discriminated by a `kind` field; `TorrentLoadResponse` excluded (v1 scope, D8).
+   150→   150→- **Consequences:** A mapping note in `src/core/types.ts` documents each divergence for reviewers.
+   151→   151→
+   152→   152→## D12 — Boundary validation is strict-but-shallow (Zod, non-coercive)
+   153→   153→
+   154→   154→- **Status:** Adopted (Phase 1)
+   155→   155→- **Context:** Provider return data is untrusted input crossing into the host (risk register #4).
+   156→   156→  Upstream relies on Kotlin's type system only; we need runtime validation for JSON-shaped data.
+   157→   157→- **Decision:** All provider return values are validated with Zod before the host returns them:
+   158→   158→  non-coercive (no `z.coerce`), unknown keys **stripped** (forward-compat), `null`-vs-missing
+   159→   159→  modeled explicitly (`nullish`). Invalid items in a `loadLinks` emission stream are **dropped and
+   160→   160→  counted** (never crash the stream, mirroring upstream's per-item `getSafeUrl` swallowing);
+   161→   161→  an invalid *response object* fails the whole call with kind `validation`.
+   162→   162→  `PlaybackLink.quality` is `number | null` — required, explicit unknown (upstream uses `Int` with 0
+   163→   163→  as the de-facto unknown; `null` is cleaner and sorts deterministically last).
+   164→   164→- **Consequences:** Providers must emit explicit `null` (not omit) for `quality`; schema/type drift
+   165→   165→  is pinned by compile-time sample-assignment tests.
+   166→   166→
+   167→   167→## D13 — Host owns errors, cancellation, and the deadline; providers stay plain
+   168→   168→
+   169→   169→- **Status:** Adopted (Phase 1)
+   170→   170→- **Context:** Verified upstream semantics: providers throw freely; `APIRepository` wraps every call
+   171→   171→  with `safeApiCall` + `withTimeout` (`APIRepository.kt:85–220`); `withTimeout` unblocks the caller at
+   172→   172→  the deadline while the abandoned coroutine is cancelled cooperatively.
+   173→   173→- **Decision:** Mirrored in TypeScript: the host (1) catches every provider fault — sync or async —
+   174→   174→  and returns a typed failure result; (2) enforces **per-method configurable timeouts**; (3) signals
+   175→   175→  cancellation to providers through an `AbortSignal` carried in `CallContext` (the timeout aborts with
+   176→   176→  a typed `TimeoutError` reason). **Honesty rule:** the host does *not* claim a provider promise was
+   177→   177→  cancelled merely because it stopped waiting — a provider that ignores the signal may keep running
+   178→   178→  detached; the deadline only bounds the host's wait. Callers may additionally pass their own
+   179→   179→  `AbortSignal` (kind `aborted`), which propagates to the provider's signal.
+   180→   180→- **Consequences:** `Promise.race` is used only to bound the *wait*, never to *claim* cancellation;
+   181→   181→  the abort signal is the sole cancellation mechanism, and tests assert it actually fires.
+   182→   182→
+   183→   183→## D14 — Roadmap Phase 1 task 3 (`src/core/registry.ts`) deferred, not skipped
+   184→   184→
+   185→   185→- **Status:** Adopted (Phase 1 execution). **Implemented 2026-10-20 — matching semantics recorded as D16.**
+   186→   186→- **Context:** The user instruction for Phase 1 scoped the deliverable to the contract
+   187→   187→  (`types.ts`, `provider.ts`), Zod schemas, host behavior, and tests; the provider/extractor registry
+   188→   188→  (newest-wins URL matching, `ExtractorApi.kt:926–986`) has no behavior test in this scope and gains
+   189→   189→  value only once Phase 2/3 providers exist.
+   190→   190→- **Decision:** `registry.ts` is the first task after this phase, still within roadmap Phase 1,
+   191→   191→  before any Phase 2 work.
+   192→   192→- **Consequences:** None structural; `provider-host.ts` and `links.ts` were added as the minimal
+   193→   193→  helpers required to make the contract behaviors testable (per instruction). The registry was
+   194→   194→  completed as the final Phase 1 task with its behavior pinned by 44 tests; see D16 for the
+   195→   195→  matching-semantics decisions.
+   196→   196→
+   197→   197→## D16 — Registry URL matching: consistent normalization, newest-wins prefix, conservative mirror fallback
+   198→   198→
+   199→   199→- **Status:** Adopted (Phase 1, implemented in `src/core/registry.ts`)
+   200→   200→- **Context:** Roadmap Phase 1 task 3. Upstream has two URL→registry resolvers: the provider-level
+   201→   201→  `getApiFromUrlNull` (`MainAPI.kt:167` — naive raw `startsWith`, first-registered wins, no
+   202→   202→  normalization) and the extractor-level `loadExtractor` (`ExtractorApi.kt:926–986` — normalized
+   203→   203→  compare URL, reverse-order scan so *"the new registered ExtractorApi takes priority"*, then a
+   204→   204→  mirror-domain fallback `Levenshtein.partialRatio(mainUrl, url) > 80`). The task instruction
+   205→   205→  specifies newest-registered-wins prefix matching, i.e. the `loadExtractor` semantics.
+   206→   206→- **Decision:** `ProviderRegistry` implements the `loadExtractor` two-stage algorithm, with these
+   207→   207→  documented divergences/hardenings (all deterministic, all pinned by tests):
+   208→   208→  1. **Consistent normalization on BOTH sides** (`normalizeProviderUrl`): trim, lowercase, strip
+   209→   209→     `https://` / `http://` / protocol-relative `//` / bare-scheme prefix, strip one leading `www.`,
+   210→   210→     strip trailing slashes. Upstream lowercases only the incoming URL and its `schemaStripRegex`
+   211→   211→     misses `http:` — inconsistent; consistent normalization is the task instruction.
+   212→   212→  2. **Prefix boundary check**: the character after the matched prefix must be end-of-string,
+   213→   213→     `/`, `?`, `#` or `:`. Hardening beyond upstream's naive `startsWith`: a NEWER provider whose
+   214→   214→     domain is a string-prefix of an OLDER provider's domain (`example.com` vs
+   215→   215→     `example.company.net`) can no longer hijack the older provider's URLs.
+   216→   216→  3. **Mirror fallback strictly per documented behavior**: Levenshtein partial ratio computed with
+   217→   217→     the same normalization upstream's `Levenshtein.ratio` uses (substitution = 2, score =
+   218→   218→     `(la + lb − dist) / (la + lb)`), strict `> 80`, threshold fixed (not configurable), scored over
+   219→   219→     the SAME normalized strings (upstream compares raw strings; shared scheme prefixes would
+   220→   220→     inflate scores — normalized inputs are strictly more conservative). Newest-first scan, first
+   221→   221→     match wins — deterministic even when an older provider would score higher.
+   222→   222→  4. **Inherent containment property** (documented for reviewers): a URL containing a provider's
+   223→   223→     normalized `mainUrl` verbatim always scores 100 in the fallback, so the boundary check routes
+   224→   224→     such URLs between stages / decides which provider wins — it cannot suppress the match.
+   225→   225→     Upstream's overall end behavior is the same; look-alike-domain suppression belongs to the
+   226→   226→     Phase 2 content/SSRF guard, not the registry.
+   227→   227→  5. **No network unshortening**: upstream's step 1 (`unshortenLinkSafe`) is a network call; Phase 1
+   228→   228→     is network-free. Link unshortening becomes a Phase 2 pre-step before registry lookup.
+   229→   229→  6. **Fail-fast registration, never-throwing lookups**: registration validates the provider object
+   230→   230→     (non-empty `name`, non-empty normalized `mainUrl`, callable methods — an empty pattern would
+   231→   231→     prefix-match everything); lookups never throw and return `null` for malformed/empty/unknown
+   232→   232→     URLs (no `URL` parsing — pure string logic). A different instance re-registered under an
+   233→   233→     existing `name` replaces it at the newest position (mirrors the upstream clone-site override
+   234→   234→     concept, `MainAPI.kt:506–520`); re-registering the identical instance is a no-op.
+   235→   235→- **Consequences:** `getByUrl` returns a discriminated match (`method: 'prefix' | 'mirror'` plus the
+   236→   236→  winning `score` for mirror matches) so callers can audit why a provider matched (D3 auditability).
+   237→   237→  The registry holds first-party `Provider` objects only — no `.cs3` loading, no dynamic code, no
+   238→   238→  network I/O. Phase 3's extractor registry can reuse the same class for `Extractor`-style resolvers.
+   239→   239→
+   240→   240→## D17 — Registry hardening: host-scoped matching; structural mirror rule supersedes the score-gated fuzzy scan
+   241→   241→
+   242→   242→- **Status:** Adopted (security review of D16, implemented in `src/core/registry.ts`)
+   243→   243→- **Context:** D16 kept the documented upstream fuzzy fallback
+   244→   244→  (`Levenshtein.partialRatio(mainUrl, url) > 80` over the FULL normalized URL). Review found that any
+   245→   245→  URL containing a provider's `mainUrl` verbatim — in the path, the query, or a hostile subdomain
+   246→   246→  position such as `example.com.evil.io` — scores 100 and selects the provider. Host-only scoring
+   247→   247→  alone does not fix this (containment in a hostile suffix still scores 100), and no score threshold
+   248→   248→  can separate `example.net` (legitimate mirror, ratio 72.7) from `example.com.evil.io` (attacker,
+   249→   249→  100): the canonical upstream mirror example fails the upstream's own 80 gate, while the attack
+   250→   250→  passes it.
+   251→   251→- **Decision:** Matching in `getByUrl` is hardened to three checks inside the same newest-first scan
+   252→   252→  order (newest-registered wins preserved):
+   253→   253→  1. **Prefix** (unchanged): full normalized URL prefix + boundary character (end, `/`, `?`, `#`,
+   254→   254→     `:`).
+   255→   255→  2. **Subdomain** (new, explicit): the URL host equals the pattern host or is a label-boundary
+   256→   256→     subdomain of it (`www2.example.com` for pattern `example.com`), for path-less patterns only.
+   257→   257→     Safe by DNS delegation — only the pattern's operator can publish hosts under its own domain.
+   258→   258→     Upstream had this behavior only accidentally (fuzzy score 100).
+   259→   259→  3. **Mirror** (structural rule, replaces score-gated fuzzy): pattern host labels align to the TAIL
+   260→   260→     of the URL host's labels with every label except the final one (TLD) exactly equal and the
+   261→   261→     final label differing — `streamtape.to` ↔ `streamtape.com`, upstream's own comment example.
+   262→   262→     Path-bearing patterns match by prefix only (no host-mirror). The reported `score` remains a
+   263→   263→     Levenshtein partial ratio over hosts only, INFORMATIONAL — it does not gate. The
+   264→   264→     `MIRROR_MATCH_THRESHOLD` constant was removed.
+   265→   265→- **Divergences from upstream (deliberate, superseding D16.3):** host-scoped mirror/subdomain
+   266→   266→  checks; structural mirror rule instead of `partialRatio > 80`; subdomain matching made explicit
+   267→   267→  and deterministic; look-alike names (`examp1e.com`), domain-suffix attacks
+   268→   268→  (`example.com.evil.io`), hostnames in path/query, and userinfo tricks (`example.com@evil.io`) can
+   269→   269→  no longer select a provider. Upstream's naive `startsWith` + full-URL fuzzy accepted all of these.
+   270→   270→- **Consequences / residual risks (explicit):** (a) exact name+TLD swaps (`example.com` ↔
+   271→   271→  `example.click`) are indistinguishable from legitimate mirrors by URL structure alone — the
+   272→   272→  mirror rule still trusts them; mitigation is provider curation (D3 review) + the provider kill
+   273→   273→  switch, never registry logic. (b) Mirror matching does not use a public-suffix list — multi-label
+   274→   274→  suffixes (`co.uk`) are handled conservatively (tail-equality never matches, so `bbc.co.uk`-style
+   275→   275→  patterns only match exact/subdomain hosts). (c) Fuzzy typo-matching is GONE by design: a
+   276→   276→  typo-squatted domain that is not an exact name+TLD swap will not resolve — fail-safe direction.
+   277→   277→  Adversarial regressions for every vector above live in `tests/registry.test.ts`.
+   278→   278→
+   279→   279→## D18 — HTTP engine + SSRF guard: posture, guarantees, and explicit security limitations
+   280→   280→
+   281→   281→- **Status:** Adopted (Phase 2 steps 1–2, implemented in `src/server/http/`)
+   282→   282→- **Context:** Roadmap Phase 2 tasks 1–2: the server-side HTTP engine (nicehttp equivalent) and the
+   283→   283→  request guard. Every provider fetch is a server-side request to an operator-relevant destination,
+   284→   284→  making SSRF the dominant security risk (risk register #4/#9).
+   285→   285→- **Decision:** `HttpEngine` (undici-based) + `GuardedDnsResolver` + `validateDestinationUrl`, with
+   286→   286→  these guarantees, each pinned by tests:
+   287→   287→  1. **Schemes**: http/https only; embedded credentials rejected; unparseable URLs rejected.
+   288→   288→  2. **Destination IP policy**: full non-public IPv4 range set (loopback, RFC1918, CGNAT,
+   289→   289→     link-local incl. cloud metadata `169.254.169.254`, TEST-NETs, multicast, reserved, benchmarking,
+   290→   290→     0/8) and IPv6 equivalents (loopback, ULA incl. `fd00:ec2::254`, link-local, multicast,
+   291→   291→     discard, Teredo, 6to4, NAT64, documentation, mapped-IPv4 unwrapped and re-classified). WHATWG
+   292→   292→     URL normalization is exploited defensively (decimal/hex/octal/short IPv4 forms normalize to
+   293→   293→     dotted form before the guard sees them).
+   294→   294→  3. **Hostname policy**: `localhost`, `*.localhost`, `*.local`, `*.internal`, `*.home.arpa`, and
+   295→   295→     known metadata/control hostnames are blocked WITHOUT any DNS call.
+   296→   296→  4. **DNS rebinding**: resolution validates EVERY A/AAA record (fail closed on ANY non-public
+   297→   297→     record — dual-record answers cannot slip through) and caches the validated set; undici's
+   298→   298→     connector `lookup` is replaced by the guarded resolver, so the TCP connection can ONLY use
+   299→   299→     addresses from the validated cache (SNI/Host stay the original hostname). Validation and
+   300→   300→     connection cannot disagree: there is exactly one source of truth, and keep-alive pools never
+   301→   301→     re-resolve.
+   302→   302→  5. **Redirects**: followed manually; every `Location` re-enters the full pipeline (a redirect can
+   303→   303→     never reach a prohibited destination — tested against the metadata IP); redirect count capped;
+   304→   304→     301/302/303→GET, 307/308 preserve method+body; cross-HOST hops drop `authorization` and do not
+   305→   305→     carry jar cookies (cookies are host-scoped per RFC 6265, so cross-PORT stays same-cookie —
+   306→   306→     tested with distinct hostnames).
+   307→   307→  6. **Limits**: total-deadline abort (timeout + caller `AbortSignal` + size cap share one
+   308→   308→     cancellation path), hard response byte cap, bounded LRU response cache (TTL, entry count,
+   309→   309→     bytes; `no-store`/`private`/`max-age` honored; set-cookie responses never cached).
+   310→   310→  7. **Cookies**: RFC 6265-style jar, opt-in, ONE jar per engine instance (per provider);
+   311→   311→     `Domain=` cannot be planted for foreign hosts; count/value caps.
+   312→   312→  8. **Header hygiene**: caller headers pass a denylist (hop-by-hop, `host`, `content-length`,
+   313→   313→     `cookie`) + injection checks (CR/LF/NUL rejected) + caps; `redactHeadersForLog` hides
+   314→   314→     credential values; engine events carry origin+path only (never query strings or headers).
+   315→   315→  9. **robots.txt**: RFC 9309-ish gate for GET/HEAD (longest-match, allow-wins-ties, `*`/`$`
+   316→   316→     patterns, UA group specificity); 4xx → allow, 5xx/failure → DISALLOW with a short retry TTL
+   317→   317→     (fail closed).
+   318→   318→  10. **Approvals**: `approvedDestinations` is the ONLY private-destination exception (operator's
+   319→   319→      own LAN/self-hosted services — content category D3.3); approvals override range/hostname
+   320→   320→      blocks for the named host only, never scheme checks, credential rejection, or DNS pinning.
+   321→   321→- **Explicit security limitations (must be re-reviewed before public deployment, D2-F gate):**
+   322→   322→  1. This is a LIBRARY for first-party provider code — no HTTP surface accepts client-supplied
+   323→   323→     URLs in this phase; the future media relay (Phase 4) needs its own auth/quota/kill-switch
+   324→   324→     layer on top.
+   325→   325→  2. DNS: the guarded resolver uses `dns.resolve*` (platform resolver, no `/etc/hosts`, no
+   326→   326→     DNSSEC/DoH); a malicious resolver could still return attacker-controlled PUBLIC IPs — scoped
+   327→   327→     by provider curation, not eliminated.
+   328→   328→  3. Redirect policy allows http↔https downgrades (validated per hop); no HSTS tracking.
+   329→   329→  4. Cookie jar implements no public-suffix list and ignores SameSite (server-side jar); `Domain=`
+   330→   330→     beyond the setting host is rejected, but suffix acceptance without PSL is approximate.
+   331→   331→  5. Response cache keys ignore `Vary` headers.
+   332→   332→  6. No automatic response decompression (undici `request`); providers receive encoded bodies if
+   333→   333→     they opt into encodings.
+   334→   334→  7. Undici CVE surface is inherited; dependency pinning/audit happens in the Phase 7 NOTICE audit.
+   335→   335→  8. `approvedDestinations` grants are operator-managed strings; approving a hostname whose DNS is
+   336→   336→     attacker-controlled would validate whatever it resolves to (fail-closed elsewhere still
+   337→   337→     applies).
+   338→   338→  9. SSRF protection covers IP-literal, DNS, and redirect vectors tested here; it is NOT claimed
+   339→   339→     complete against exotic vectors (e.g. HTTP/2 connect-style abuse, 0-RTT reuse across engines,
+   340→   340→     TIME_WAIT hijacking on multi-user hosts).
+   341→   341→
+   342→   342→## D19 — Phase 2 steps 3–5: parse toolkit (NO JS execution), link pipeline, observability
+   343→   343→
+   344→   344→- **Status:** Adopted (Phase 2 steps 3–5, implemented in `src/server/parse/`, `src/server/links/`, `src/server/obs/`)
+   345→   345→- **Context:** Roadmap Phase 2 tasks 3–5. The original roadmap wording suggested a
+   346→   346→  `node:vm`-sandboxed snippet runner "for Rhino-style de-obfuscation". The owner instruction of
+   347→   347→  2026-10-20 revised this explicitly: **do not execute extracted JavaScript** — no `eval`, no
+   348→   348→  `new Function`, no `node:vm` as a security boundary (Node's own documentation warns that `vm`
+   349→   349→  is not a security mechanism). Providers are first-party code (D6); page content is untrusted
+   350→   350→  data and stays data.
+   351→   351→- **Decision:**
+   352→   352→  1. **Parse toolkit** (`src/server/parse/`): cheerio-based HTML helpers with input caps and
+   353→   353→     never-throwing typed results (text/attributes, absolutized `<a href>` links — non-http(s)
+   354→   354→     targets are never resolved — and bounded metadata); size-capped `JSON.parse` + one-shot
+   355→   355→     parse-and-Zod-validate reusing the Phase 1 boundary schemas (D12).
+   356→   356→  2. **`p/a/c/k/e` unpacker** (`parse/packer.ts`): a deterministic, first-party decoder for the
+   357→   357→     widely documented Dean-Edwards-packer format — a PURE STATIC STRING TRANSFORM. It parses
+   358→   358→     only the call's ARGUMENTS (payload, radix, count, `'|'`-separated dictionary, including the
+   359→   359→     canonical `'<keys>'.split('|')` form) and substitutes radix-encoded tokens (2–62,
+   360→   360→     `0-9a-zA-Z`, matching the canonical `e(c)` decoder) under word boundaries with a replacer
+   361→   361→     FUNCTION (so `$`-patterns in dictionary values cannot corrupt output). It never parses the
+   362→   362→     surrounding script as code and never evaluates anything. Typed failures for `notPacked`,
+   363→   363→     `tooLarge`, `malformed`, `unsupportedRadix`; it never throws on hostile input.
+   364→   364→  3. **Link pipeline** (`src/server/links/`): `LinkPipeline` re-validates every
+   365→   365→     `PlaybackLink`/`SubtitleFile` against the Phase 1 schemas (drop-and-count, D12), reuses the
+   366→   366→     core helpers (`dedupeLinks` first-wins, `sortLinksByQualityDesc` stable/unknown-last) and
+   367→   367→     adds subtitle dedupe by NORMALIZED (language, url) — language trimmed + case-folded (BCP-47
+   368→   368→     tags are case-insensitive; a deliberate, documented extension over the collector's exact-key
+   369→   369→     dedupe), URL trimmed only (paths are case-sensitive). Results are cached in a bounded TTL
+   370→   370→     cache keyed `(scope, providerName, episodeId)` with single-flight de-duplication; the
+   371→   371→     default TTL (20 min) mirrors the verified upstream link cache (`RepoLinkGenerator.kt:73`).
+   372→   372→     **Cross-user protection:** links carrying credential-bearing headers
+   373→   373→     (`authorization`, cookies, API-token headers — name-based, case-insensitive) are NEVER
+   374→   374→     cached under the default `shared` scope; they are cached only when the caller passes an
+   375→   375→     explicit per-user scope, so credentialed playback results cannot leak across users.
+   376→   376→     `TtlCache` gained a read-only additive `keys()` snapshot to support per-provider
+   377→   377→     invalidation; no other engine/cache behavior changed.
+   378→   378→  4. **Observability** (`src/server/obs/`): structured provider-call events (start/end with
+   379→   379→     injectable-clock durations, outcome `success|failure|skipped`, failure kinds =
+   380→   380→     `ProviderFailureKind` + `killed`), engine-event forwarding, and `wrapProvider` — the
+   381→   381→     enforcement wrapper that checks the kill switch BEFORE every method call (refused calls
+   382→   382→     throw the typed `ProviderDisabledError` and the provider is NOT invoked), classifies
+   383→   383→     outcomes, and rethrows original errors unchanged. Redaction: header values via the engine's
+   384→   384→     `redactHeadersForLog`; `redactUrlForLog` drops userinfo + fragments and value-redacts a
+   385→   385→     denylist of sensitive query-parameter names; `redactEventMessage` re-redacts URLs inside
+   386→   386→     free text and caps length; argument values and response bodies are absent from event shapes
+   387→   387→     by construction. Health: `ProviderHealthTracker` with `idle → ok → degraded (≥1
+   388→   388→     consecutive failure) → down (≥3)` plus `disabled` from the kill switch, counts/durations
+   389→   389→     only (no payloads), deterministic snapshots, and the future `GET /api/providers/health`
+   390→   390→     response contract pinned as Zod schemas (`ProviderHealthSnapshotSchema`) and self-validated
+   391→   391→     in tests. Kill switch: in-memory per-provider + global switch with reasons, mirroring the
+   392→   392→     upstream `SitePlugin.status` pattern (`RepositoryManager.kt:50–78`).
+   393→   393→  5. **No HTTP surface in this phase.** No admin endpoint, no health endpoint, no unauthenticated
+   394→   394→     management interface — the health API contract is a documented schema for the future
+   395→   395→     authenticated server (POLICY.md §2 gate). No media relay (Phase 4), no real providers
+   396→   396→     (Phase 3), no client-controlled URLs fed to the engine (D18 unchanged).
+   397→   397→- **Deferred work (explicit):** general JavaScript execution for providers that legitimately
+   398→   398→  require it (e.g. non-packer de-obfuscation) is NOT built. When a provider needs it, it
+   399→   399→  requires a separately isolated runtime (WASM/QuickJS-class isolation or a dedicated process
+   400→   400→  with capability grants) plus a security review — recorded as a gate on D6-F, not resolvable by
+   401→   401→  implementation drift.
+   402→   402→- **Consequences / limitations (explicit):**
+   403→   403→  1. The unpacker covers the canonical algorithm (radix 2–62, common string escapes); exotic
+   404→   404→     variants (radix > 62, self-modifying `e`/`d` bodies, non-canonical dictionaries) fail as
+   405→   405→     typed errors or decode partially — the output is DATA, and callers must treat it as
+   406→   406→     untrusted text, never as something to run.
+   407→   407→  2. Log redaction is NAME-based (fixed denylists for headers and query params); a credential
+   408→   408→     hidden under an unlisted non-standard parameter name could still appear in the narrow
+   409→   409→     fields that carry URLs. Structural mitigation: provider-call events carry only
+   410→   410→     provider/method/duration/outcome; URLs appear only in explicitly redacted fields.
+   411→   411→  3. Health tracking and the kill switch are in-memory: state resets on restart, and nothing is
+   412→   412→     shared across processes; the future API layer must re-apply operator policy on boot.
+   413→   413→  4. The pipeline cache is per-instance memory; two processes never share resolved links, and
+   414→   414→     credentialed results are isolated by scope — but scope VALUES are caller-supplied
+   415→   415→     identifiers; the future server must map them to authenticated users.
+   416→   416→  5. cheerio (^1.1) was added as the only new dependency (MIT; recorded per POLICY.md §6).
+   417→   417→
+   418→   418→---
+   419→   419→
+   420→   420→## Open future decisions (summary)
+   421→   421→
+   422→   422→| ID | Topic | Gate |
+   423→   423→|---|---|---|
+   424→   424→| D2-F | Public / shared deployment | legal review of live source set + abuse controls + takedown contact |
+   425→   425→| D3-F | Any provider outside the lawful categories (incl. AniKoto-style) | explicit legal review, superseding decision |
+   426→   426→| D6-F | Third-party/dynamic provider model (Phase 6 option B/C) | security review, sandbox design |
+   427→   427→| D7-F | ClearKey via EME for licensed content | explicit decision; default off |
+   428→   428→| D15-F | License selection for this repository | owner decision before any distribution (NOTICE audit, Phase 7) |
+   429→   429→
