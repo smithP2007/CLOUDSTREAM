@@ -4,7 +4,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { search } from '../../../server/catalog';
+import { findProvider, search } from '../../../server/catalog';
 import { toCardViews } from '../../../server/catalog/views';
 import { MOCK_PROVIDER_ID } from '../../../server/providers/mock';
 
@@ -32,7 +32,22 @@ export async function GET(request: NextRequest) {
     );
   }
   const page = Number.parseInt(pageRaw, 10);
-  const result = await search(MOCK_PROVIDER_ID, query, page);
+  // Provider selection (D20): `provider` defaults to the mock catalog; any
+  // non-empty value must name an INSTALLED provider (unknown values are a
+  // 400, never a silent fallback).
+  const requestedProvider = (params.get('provider') ?? '').trim();
+  let providerId = MOCK_PROVIDER_ID;
+  if (requestedProvider !== '') {
+    const installed = findProvider(requestedProvider);
+    if (installed === null) {
+      return NextResponse.json(
+        { ok: false, error: { kind: 'bad-request', message: `Unknown provider: ${requestedProvider}` } },
+        { status: 400 },
+      );
+    }
+    providerId = installed.id;
+  }
+  const result = await search(providerId, query, page);
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: ERROR_STATUS[result.error.kind] ?? 500 });
   }

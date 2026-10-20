@@ -33,11 +33,21 @@ afterEach(() => {
 describe('installed providers', () => {
   it('exposes the mock fixture provider with stable metadata', () => {
     const providers = listInstalledProviders();
-    expect(providers.map((p) => p.id)).toEqual([MOCK_PROVIDER_ID]);
+    // D20: the Internet Archive provider is installed alongside the mock
+    // catalog; the mock stays FIRST (default catalog).
+    expect(providers.map((p) => p.id)).toEqual([MOCK_PROVIDER_ID, 'internetarchive']);
     const meta = findProvider(MOCK_PROVIDER_ID);
     expect(meta?.name).toBe('Mock Fixtures');
     expect(meta?.lang).toBe('en');
     expect(meta?.tvTypes.length).toBeGreaterThan(3);
+  });
+
+  it('exposes the Internet Archive provider with D20-recorded metadata', () => {
+    const meta = findProvider('internetarchive');
+    expect(meta?.name).toBe('InternetArchive');
+    expect(meta?.mainUrl).toBe('https://archive.org');
+    expect(meta?.lang).toBe('en');
+    expect(meta?.tvTypes).toEqual(['Movie', 'Documentary']);
   });
 
   it('derives detail URLs deterministically and validates slugs', () => {

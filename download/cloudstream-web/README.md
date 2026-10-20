@@ -2,8 +2,9 @@
 
 A browser-based movie, series and anime application **inspired by** [CloudStream](https://github.com/recloudstream/cloudstream) — designed to run in a PC browser without the Android app.
 
-**Status: Phase 0–2 complete; Phase 4 task 2 (player stack) complete + audited; Phase 3 (real
-providers) gated on the pre-flight checklist and the D20 approval process; Phase 5 (Next.js web
+**Status: Phase 0–2 complete; Phase 4 task 2 (player stack) complete + audited; Phase 3 has begun
+under D20 (ADOPTED 2026-10-21 — the Internet Archive provider is implemented; provisional state
+closes via scripts/ia-probe.mjs); Phase 5 (Next.js web
 application) implemented — fixture catalog, browse/search/details/watch/library/providers, with
 the real player integrated end to end; deployment hardening (D25) done — CSP + security
 headers, integrity-verified ffmpeg core, license notices.**
@@ -70,8 +71,9 @@ Engine behavior is pinned by `tests/http-guard.test.ts` (43 unit tests, mocked D
 ## Phase 4 (task 2, partial) — player stack (`src/player/`)
 
 Implemented **without** the media relay (Phase 4 task 1 — deferred; D21): local files + fixtures
-+ authorized demo streams only; no real providers (Phase 3 stays gated on the D20 approval
-process). Decisions: D21 (architecture/scope), D22 (dependencies + honest conversion scope),
++ authorized demo streams, plus the D20 Internet Archive provider (reviewed public-domain films;
+per-item rights register, pacing, anonymous reads — see docs/evidence/ and checklist §12).
+Decisions: D21 (architecture/scope), D22 (dependencies + honest conversion scope),
 D23 (demo/fixture policy). Compatibility evidence with per-claim verification status:
 [`docs/media-compatibility.md`](docs/media-compatibility.md).
 
@@ -128,14 +130,14 @@ obligations (GPL source offer, style-src nonce follow-up): `docs/deployment-requ
 npm run dev        # next dev on :3000
 npm run build:app  # next build (production)
 npm run start      # next start on :3000
-npm test           # vitest — 414 tests (incl. catalog/codec/library/prefs/UI/security suites)
+npm test           # vitest — 453 tests (incl. the IA-provider suite, catalog/codec/library/prefs/UI/security)
 ```
 
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (414 tests: provider/HTTP/parsing suites + player + Phase 5 app suites + D25/D26 security)
+npm test        # vitest (453 tests: provider/HTTP/parsing suites + player + Phase 5 app suites + D20 IA provider + D25/D26 security)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

@@ -38,19 +38,22 @@ and what to build next. Full history of every work session is in
    spec, not source to copy)
 5. `docs/worklog.md` — what every previous session actually did and verified
 
-## 2. Current state (verified green at handoff time — Phase 5 + D25 hardening, 2026-10-20)
+## 2. Current state (verified green at handoff time — Phase 5 + D25/D26 + D20 IA provider, 2026-10-21)
 
 - **Complete:** Phase 0, Phase 1 (contract layer), Phase 2 (all steps), Phase 4 task 2
-  (player stack, D21–D23, post-implementation audit commit series), and **Phase 5** (the
+  (player stack, D21–D23, post-implementation audit commit series), **Phase 5** (the
   Next.js 16 web application — decision D24): home/search/details/watch/library/providers over
   a deterministic mock fixture provider, wired ONLY through `ProviderHost` + `LinkPipeline` +
-  the D19 observability wrapper. The Phase 3 gate (D20) is UNTOUCHED and still requires owner
-  approval; the media relay (Phase 4 task 1, D8) is still not built.
-- **Tests: 414/414 vitest** across 24 files + **25/25 app e2e** (Playwright against the
-  PRODUCTION `next build` via `next start`, under the production CSP) + **6/6 demo e2e**
-  (includes 2 REAL ffmpeg.wasm conversion runs). NOTE: vitest must collect `.tsx` (include
-  `*.test.{ts,tsx}`) — an earlier pattern silently skipped the component suites; do not
-  regress that.
+  the D19 observability wrapper — and now **the first real provider (D20, adopted 2026-10-21):
+  the Internet Archive public-domain film provider** (`src/server/providers/internetarchive/`).
+  The media relay (Phase 4 task 1, D8) is still not built.
+- **Tests: 453/453 vitest** across 25 files (incl. 38 new IA-provider tests, zero live calls)
+  + **25/25 app e2e** (Playwright against the PRODUCTION `next build` via `next start`, under
+  the production CSP) + **6/6 demo e2e** (includes 2 REAL ffmpeg.wasm conversion runs).
+  NOTE: vitest must collect `.tsx` (include `*.test.{ts,tsx}`) — an earlier pattern silently
+  skipped the component suites; do not regress that. NOTE 2: the app e2e REUSES a running
+  server on port 3000 (`reuseExistingServer: true`) — kill stale `next-server` processes
+  before e2e or you will test an OLD build (this bit this session: 14 phantom failures).
 - **D25 deployment hardening (2026-10-20):** CSP + security headers on every route
   (`src/app/_lib/securityHeaders.ts`, unit-tested; `media-src`/`script-src`/`connect-src`
   `blob:` relaxations empirically verified), ffmpeg core SHA-256 verification DEFAULT-ON in
@@ -63,8 +66,20 @@ and what to build next. Full history of every work session is in
   static `headers()` keeps only the nonce-independent hardening headers. Verified gotcha:
   read nonces via `script.nonce` (IDL) — browsers hide the content attribute after parse.
   Remaining: operator GPL source-offer (deployment-requirements §1), `style-src
-  'unsafe-inline'` follow-up, Phase 7 NOTICE audit. The Phase 3 gate (D20) is UNTOUCHED;
-  the media relay (D8) is still not built.
+  'unsafe-inline'` follow-up, Phase 7 NOTICE audit. The media relay (D8) is still not built.
+- **D20 Internet Archive provider (2026-10-21):** ADOPTED (owner-approved in-session after the
+  ToU gate closed: P1 robots captured, P3 dated ToU copy archived
+  (`docs/evidence/archive-org-terms-of-use--2026-10-21.md`), favorable read-only-use review
+  (`docs/evidence/ia-tou-review--2026-10-21.md`)). Provider enforces: curated collection pools
+  PLUS mandatory per-item rights register (`register.ts` ↔ `docs/evidence/ia-rights-register.md`),
+  anonymous reads only, identified UA, ≥1 req/s pacing + 429/Retry-After (pacer.ts),
+  progressive-MP4-only links (HLS never emitted), access-restricted/lending items hard-refused,
+  D18-engine-mediated fetches only, kill switch wired. `/api/search` takes a validated
+  `provider` selector; the search UI has a catalog switcher. **PROVISIONAL STATE (honest):**
+  P2a–P2f playback probes NOT run (no raw egress this session) → playback claims stay OFF;
+  fixtures are documentation-pinned specimens (not byte-faithful); register identifiers are
+  unverified candidates. `scripts/ia-probe.mjs` closes all of this from an egress-capable
+  session — see checklist addendum §12 and deployment-requirements §7.
 - **Verification battery:** `npm test` + `npm run typecheck` + `npm run lint` +
   `npm run build` (library → dist/) + `npm run build:app` (next build) + `npm run e2e` +
   `npm run e2e:app` — all green at handoff.
@@ -76,6 +91,8 @@ and what to build next. Full history of every work session is in
   - `src/core/` — contract (types, schemas, provider, links, provider-host, registry)
   - `src/server/http/`, `src/server/parse/`, `src/server/links/`, `src/server/obs/` — runtime services
   - `src/server/providers/mock/` — deterministic fixture `Provider` + catalog data (app/tests only, never auto-registered)
+  - `src/server/providers/internetarchive/` — the D20 real provider (provider + wire schemas +
+    pacing + per-item rights register enforcement; live fixtures pending — see checklist §12)
   - `src/server/catalog/` — Phase 5 data-access layer + app runtime (kill switch, health, wrapped providers, pipeline)
   - `src/player/` — playback stack (+ `conversion/next-shims/` Turbopack alias targets)
   - `src/proxy.ts` — the D26 nonce-CSP proxy (Next 16 middleware convention)
@@ -86,14 +103,16 @@ and what to build next. Full history of every work session is in
 - **Commands:** `npm ci && npm test && npm run typecheck && npm run lint && npm run build && npm run build:app && node scripts/copy-fixtures-web.mjs && npm run e2e:app`
   (conversion e2e additionally needs `npm run fixtures:ffmpeg-core`; verify core digests with `npm run verify:core`)
 
-## 3. The exact next task (Phase 3 gate — still STOP first)
+## 3. The exact next task (close D20's provisional state)
 
-Phase 5 is done (see `docs/worklog.md` Task 12 and decision D24). Every remaining
-content-facing step is still gated: the **Phase 3 pre-flight inspection checklist** for the
-Internet Archive provider (revision 3, `docs/phase3-preflight-checklist.md`) awaits owner
-review, and adopting **D20** is the only act that authorizes provider implementation. The
-owner may instead commission the Phase 4 task 1 media-relay security review (D8 scope) — also
-a gated decision. Do not start any of these without explicit approval.
+The Internet Archive provider EXISTS and is wired (see D20). The remaining work is the
+**provisional-state closure**: run `node scripts/ia-probe.mjs` from an egress-capable session —
+it re-verifies robots (P1), re-captures the ToU byte-faithfully (P3), runs playback probes
+P2a–P2f, captures live fixtures 1–8, and verifies the rights-register identifiers. Then:
+reconcile the wire schemas with real payloads, flip `identifierVerified` flags, re-record
+evidence, and only then make playback claims. Independent remaining gates: the Phase 4 task 1
+media-relay security review (D8) and any NEW provider beyond Internet Archive (each needs its
+own pre-flight + ToU gate). Do not start any of these without explicit approval.
 
 ## 4. Gotchas learned the hard way (details in docs/decisions.md D17/D18/D19)
 

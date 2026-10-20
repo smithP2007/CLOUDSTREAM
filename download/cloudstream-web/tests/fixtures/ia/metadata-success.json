@@ -1,0 +1,29 @@
+{
+  "created": 1735689600,
+  "d1": "ia800204.us.archive.org",
+  "d2": "ia601402.us.archive.org",
+  "dir": "/29/items/night_of_the_living_dead",
+  "files": [
+    { "name": "night_of_the_living_dead.avi", "source": "original", "format": "Hi-Res MPEG4", "size": "3214587904", "length": "5771.5", "mtime": "1226480112" },
+    { "name": "night_of_the_living_dead_512kb.mp4", "source": "derivative", "format": "h.264", "size": "518451200", "length": "1:36:11", "height": "480", "width": "640", "mtime": "1226480999" },
+    { "name": "night_of_the_living_dead.ogv", "source": "derivative", "format": "Ogg Video", "size": "402198144", "length": "1:36:11", "height": "480", "width": "640", "mtime": "1226481001" },
+    { "name": "night_of_the_living_dead.srt", "source": "original", "format": "SubRip", "size": "54218", "mtime": "1650000000" },
+    { "name": "night_of_the_living_dead.thumbs.jpg", "source": "derivative", "format": "Thumbnail", "size": "20480" }
+  ],
+  "files_count": 5,
+  "item_last_updated": 1735689600,
+  "item_size": 4135437446,
+  "metadata": {
+    "identifier": "night_of_the_living_dead",
+    "title": "Night of the Living Dead",
+    "year": "1968",
+    "mediatype": "movies",
+    "description": "<p>A group of strangers barricades themselves in a rural farmhouse while the recently dead rise and attack the living.</p><p>Directed by George A. Romero.</p>",
+    "collection": ["feature_films", "horror_film_archive"],
+    "runtime": "1:36:11",
+    "licenseurl": null
+  },
+  "server": "ia800204.us.archive.org",
+  "uniq": 4127583,
+  "workable_servers": ["ia800204.us.archive.org", "ia601402.us.archive.org"]
+}

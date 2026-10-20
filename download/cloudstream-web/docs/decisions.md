@@ -683,6 +683,70 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 
 ---
 
+## D20 — Phase 3 authorization: Internet Archive reference provider (ADOPTED 2026-10-21, conditional)
+
+**Status: ADOPTED by the project owner on 2026-10-21** (recorded in-session via the structured
+approval: "Approve + probe" for the pre-flight checklist rev 3 and the read-only probes; "Full
+build" conditional on a favorable ToU review, which concluded favorably the same day). This is the
+decision the pre-flight checklist (`docs/phase3-preflight-checklist.md`) reserved for the owner —
+it was not self-approved by any automated session.
+
+**Adoption preconditions — all satisfied 2026-10-21:**
+
+1. **Probe P3 (dated ToU copy):** archived at `docs/evidence/archive-org-terms-of-use--2026-10-21.md`
+   — full Terms of Use (31 Dec 2014) captured from the Wayback raw replay of
+   `archive.org/about/terms.php` (the live page is JS-gated; E20/A1 resolved with the JS-gate
+   caveat recorded). Currency cross-checked against IA's current help-center citations.
+2. **Probe P1 (robots.txt):** captured same day — `User-agent: *` disallows only `/control/` and
+   `/report/`; confirms E24 for every path this provider uses.
+3. **Read-only-use clause review with a favorable conclusion:** `docs/evidence/ia-tou-review--2026-10-21.md`
+   — conclusion FAVORABLE WITH CONDITIONS (§3 there). The residual ambiguity (2014 "scholarship
+   and research purposes only" grant language vs. IA's published automated-access regime) is
+   recorded with mitigations, not hidden.
+
+**What this adoption authorizes:** implementation and operation of the Internet Archive provider
+under ALL of the following, each enforced in code (`src/server/providers/internetarchive/`) or
+recorded as a deployment requirement:
+
+- **Content:** POLICY §3.1 public-domain categories only, enforced by curated collection pools
+  (`feature_films`, `film_noir`, `classic_cartoons` — necessary, not sufficient) PLUS the mandatory
+  **per-item rights register** (`docs/evidence/ia-rights-register.md` + the machine-enforced copy
+  in `register.ts`): `search`/`getMainPage` drop unregistered identifiers; `load`/`loadLinks`
+  refuse them; lending/CDL and access-restricted items are hard-refused (§8.3 metadata gate);
+  uploader rights metadata counts only as evidence to review.
+- **API posture:** anonymous read-only GETs to the documented endpoints
+  (`advancedsearch.php`, `/metadata/{id}`, `/services/img/{id}`); identified User-Agent
+  (`cloudstream-web/<version> (+repo URL)`); conservative pacing — OUR values: ≥1 request/second
+  sustained (1100 ms spacing), ≤2 in flight, 429 + `Retry-After` honored with a 60 s floor
+  (pacer.ts); search cached 10 min, metadata 20 min; no credentials ever.
+- **Playback surface:** progressive-MP4 derivative links only (`type: 'video'`), h.264 preferred
+  per E8; **HLS is never emitted** (E18 UNKNOWN); **no playback claim is made** until probes
+  P2a–P2f run (see the provisional-state condition below). No media relay (D8 untouched).
+- **Security invariants preserved:** all server-side fetches through the D18 engine (SSRF guard,
+  DNS pinning, fail-closed robots, redirect re-validation); the download URL is never fetched
+  server-side (the browser fetches it directly for native playback); D19 no-execution rule
+  (payloads are data; parse-toolkit boundary only); kill switch wired via `wrapProvider`.
+- **Testing:** fixtures-first with zero live calls; boundary validation strict-but-shallow (D12)
+  at the IA wire schemas; host-owned error boundary (D13).
+
+**Provisional-state condition (recorded, not hidden):** this session had NO raw-HTTP egress, so
+(a) probes P2a–P2f (playback preconditions) have NOT run — playback remains "plausible, unverified"
+and UI claims must not state more; (b) fixtures 1–8 are documentation-pinned shape specimens, not
+byte-faithful captures (fixtures 3/6/7 pending); (c) the initial rights-register entries carry
+`identifierVerified: false` — their identifiers are candidates pending live verification. ALL of
+these close when `scripts/ia-probe.mjs` runs from an egress-capable session; that run, the
+resulting fixture re-capture, and a live `search → load → loadLinks` pass are **Phase 3 exit
+criteria still open**. The provider ships enabled for the private MVP but its failure modes are
+fail-closed (schema drops, register refusals, typed host failures, health-tracker visibility).
+
+**Consequences:** the first real provider exists; `/api/search` accepts a validated `provider`
+selector; the search UI offers the Internet Archive catalog. The mock fixture provider remains
+installed and default. Any provider beyond this one still requires its own pre-flight + ToU gate
+under the same process. Superseded only by a new explicit owner decision.
+
+---
+
+
 ## Open future decisions (summary)
 
 | ID | Topic | Gate |

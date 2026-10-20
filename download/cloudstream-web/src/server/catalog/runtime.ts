@@ -26,6 +26,12 @@ import { ProviderCallLogger, wrapProvider } from '../obs/events';
 import { ProviderHealthTracker } from '../obs/health';
 import { ProviderKillSwitch } from '../obs/kill-switch';
 import { createMockProvider, MOCK_MAIN_URL, MOCK_PROVIDER_ID, MOCK_PROVIDER_NAME } from '../providers/mock';
+import {
+  createInternetArchiveProvider,
+  IA_MAIN_URL,
+  IA_PROVIDER_ID,
+  IA_PROVIDER_NAME,
+} from '../providers/internetarchive';
 
 /** UI-facing description of one installed provider. */
 export interface InstalledProviderMeta {
@@ -95,6 +101,21 @@ function buildRuntime(): AppRuntime {
     mainUrl: MOCK_MAIN_URL,
     lang: 'en',
     tvTypes: ['Movie', 'TvSeries', 'Anime', 'Documentary', 'Live'],
+  });
+
+  // Internet Archive provider (D20, adopted 2026-10-21): the first real
+  // content source. Wired through the SAME kill switch + observability as the
+  // mock provider; its methods are paced (D20) and register-gated (per-item
+  // rights register). Live fetches run exclusively through the D18 engine.
+  const internetArchive = wrapProvider(createInternetArchiveProvider(), { logger, killSwitch });
+  providers.set(IA_PROVIDER_ID, internetArchive);
+  hosts.set(IA_PROVIDER_ID, new ProviderHost(internetArchive));
+  meta.push({
+    id: IA_PROVIDER_ID,
+    name: IA_PROVIDER_NAME,
+    mainUrl: IA_MAIN_URL,
+    lang: 'en',
+    tvTypes: ['Movie', 'Documentary'],
   });
 
   return { killSwitch, health, logger, pipeline: new LinkPipeline(), providers, hosts, meta };

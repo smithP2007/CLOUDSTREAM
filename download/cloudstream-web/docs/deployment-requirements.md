@@ -151,3 +151,32 @@ Directive evidence (each relaxation verified empirically, not assumed):
   image must run `npm run fixtures:web` (and, for conversion, `npm run fixtures:ffmpeg-core`)
   during the build step. The production e2e (`npm run e2e:app`) already chains this.
 - `demo/public/ffmpeg-core/`, `demo/public/ffmpeg-lib/` are gitignored (GPL core never committed).
+
+## 7. Internet Archive provider operations (D20 — new, 2026-10-21)
+
+The Internet Archive provider (D20) adds operator duties that are DEPLOYMENT REQUIREMENTS, not
+optional hygiene:
+
+1. **Complete the provisional-state work before public claims.** Run `node scripts/ia-probe.mjs`
+   from an egress-capable machine: it re-verifies robots.txt (P1), re-captures the ToU
+   byte-faithfully (P3), runs playback probes P2a–P2f, captures live fixtures 1–8, and verifies
+   the rights-register identifiers. Until P2 evidence exists, the UI/deployment must NOT claim
+   verified playback for archive.org content ("plausible, unverified" is the honest state).
+2. **Per-item rights register maintenance.** Any item added to the register
+   (`docs/evidence/ia-rights-register.md` + `src/server/providers/internetarchive/register.ts`)
+   requires reviewed rights evidence recorded in both copies. Register entries removed on
+   re-review or on notice must be removed from BOTH copies atomically.
+3. **Takedown / abuse contact (POLICY §6, checklist exit criterion e).** For any deployment
+   beyond private operator use: publish a working contact route for rights-holder notices; on a
+   notice for a register item, remove the item from the register (the provider then refuses it
+   fail-closed) and confirm with the notifier. IA's own copyright-agent route is recorded in the
+   captured ToU (`info@archive.org`, 300 Funston Ave., San Francisco, CA 94118, +1 415-561-6767).
+4. **ToU currency re-check.** The live archive.org ToU page is JS-gated; the dated capture of
+   record is the 2024-snapshot Wayback copy (text dated 31 Dec 2014, cross-checked against IA's
+   current help-center citations on 2026-10-21). Re-run the currency cross-check (and the probe's
+   P3 re-capture) at every major deployment, and re-review immediately if IA publishes a new ToU.
+5. **Written clarification (optional risk reducer).** The ToU review recorded a residual
+   interpretive point (2014 "scholarship and research purposes only" grant language). An operator
+   who wants zero interpretive risk can request written clarification from `info@archive.org`
+   describing this exact use profile (anonymous read-only API use, noncommercial, PD items only,
+   identified UA, conservative pacing) before any public deployment.

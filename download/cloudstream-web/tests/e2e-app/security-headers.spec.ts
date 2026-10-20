@@ -19,6 +19,7 @@ test('the nonce CSP and hardening headers are attached to page routes', async ({
   expect(response.status()).toBe(200);
   const csp = response.headers()['content-security-policy'];
   expect(csp).toBeTruthy();
+  if (csp === undefined) throw new Error('missing content-security-policy header');
   expect(csp).toContain("default-src 'self'");
   expect(csp).toContain("'wasm-unsafe-eval'");
   expect(csp).toContain("worker-src 'self'");
@@ -49,6 +50,7 @@ test('the nonce CSP is attached to API routes too', async ({ request }) => {
   expect(response.status()).toBe(200);
   const csp = response.headers()['content-security-policy'];
   expect(csp).toBeTruthy();
+  if (csp === undefined) throw new Error('missing content-security-policy header');
   expect(csp).toContain("default-src 'self'");
   expect(csp).toMatch(NONCE_IN_SCRIPT_SRC);
 });
@@ -58,6 +60,7 @@ test('the nonce is fresh per request', async ({ request }) => {
     const response = await request.get('/');
     const csp = response.headers()['content-security-policy'];
     expect(csp).toBeTruthy();
+    if (csp === undefined) throw new Error('missing content-security-policy header');
     const match = csp!.match(/'nonce-([A-Za-z0-9_-]+)'/);
     expect(match, 'CSP carries a nonce').toBeTruthy();
     return match![1];
@@ -102,6 +105,7 @@ test('the conversion worker file receives a policy with the blob: sources', asyn
   expect(response.status()).toBe(200);
   const csp = response.headers()['content-security-policy'];
   expect(csp).toBeTruthy();
+  if (csp === undefined) throw new Error('missing content-security-policy header');
   expect(csp).toMatch(/script-src [^;]*blob:/);
   expect(csp).toMatch(/connect-src [^;]*blob:/);
 });

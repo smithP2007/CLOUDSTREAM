@@ -14,6 +14,12 @@ import { ErrorPanel } from './ErrorPanel';
 import { EmptyState } from './EmptyState';
 import type { CatalogCardView } from '../../server/catalog/views';
 
+/** Minimal provider descriptor passed in from the server wrapper. */
+export interface SearchProviderOption {
+  readonly id: string;
+  readonly name: string;
+}
+
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 interface SearchViewState {
@@ -25,12 +31,15 @@ interface SearchViewState {
 
 const IDLE: SearchViewState = { status: 'idle', items: [], hasNext: false, message: null };
 
-export function SearchClient() {
+export function SearchClient({ providers }: { providers: readonly SearchProviderOption[] }) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const urlQuery = searchParams.get('q') ?? '';
   const urlPage = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const urlProvider = providers.some((p) => p.id === (searchParams.get('provider') ?? ''))
+    ? (searchParams.get('provider') as string)
+    : (providers[0]?.id ?? '');
 
   const [inputValue, setInputValue] = useState(urlQuery);
   const [view, setView] = useState<SearchViewState>(IDLE);
@@ -42,13 +51,14 @@ export function SearchClient() {
   }, [urlQuery]);
 
   const runSearch = useCallback(
-    async (query: string, page: number) => {
+    async (query: string, page: number, provider: string) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       setView((current) => ({ ...current, status: 'loading' }));
       try {
         const params = new URLSearchParams({ q: query, page: String(page) });
+        if (provider !== '') params.set('provider', provider);
         const response = await fetch(`/api/search?${params.toString()}`, {
           signal: controller.signal,
           headers: { accept: 'application/json' },
@@ -82,11 +92,11 @@ export function SearchClient() {
       setView(IDLE);
       return;
     }
-    void runSearch(urlQuery, urlPage);
+    void runSearch(urlQuery, urlPage, urlProvider);
     return () => {
       abortRef.current?.abort();
     };
-  }, [urlQuery, urlPage, runSearch]);
+  }, [urlQuery, urlPage, urlProvider, runSearch]);
 
   // Move focus to the results heading after query/page changes (a11y).
   const lastNavKey = useRef(`${urlQuery}:${urlPage}`);
@@ -99,30 +109,35 @@ export function SearchClient() {
   }, [urlQuery, urlPage]);
 
   const pushParams = useCallback(
-    (query: string, page: number) => {
+    (query: string, page: number, provider: string) => {
       const params = new URLSearchParams();
       if (query.trim().length > 0) params.set('q', query.trim());
       if (page > 1) params.set('page', String(page));
+      if (provider !== '' && providers[0]?.id !== provider) params.set('provider', provider);
       const qs = params.toString();
       router.push(qs.length > 0 ? `/search?${qs}` : '/search');
     },
-    [router],
+    [router, providers],
   );
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    pushParams(inputValue, 1);
+    pushParams(inputValue, 1, urlProvider);
   };
 
   const goToPage = (page: number) => {
-    pushParams(urlQuery, page);
+    pushParams(urlQuery, page, urlProvider);
+  };
+
+  const onProviderChange = (provider: string) => {
+    if (urlQuery.trim().length > 0) pushParams(urlQuery, 1, provider);
   };
 
   return (
     <>
       <h1 style={{ marginBottom: 0 }}>Search</h1>
       <p style={{ color: 'var(--csw-muted)', marginTop: 4 }}>
-        Deterministic fixture catalog — search matches names, tags and content types.
+        Fixture catalog or the Internet Archive public-domain provider (D20).
       </p>
       <form className="search-form" role="search" onSubmit={onSubmit}>
         <label className="sr-only" htmlFor="search-input">
@@ -140,6 +155,23 @@ export function SearchClient() {
           autoComplete="off"
           data-testid="search-input"
         />
+        <label className="sr-only" htmlFor="search-provider">
+          Content source
+        </label>
+        <select
+          id="search-provider"
+          className="input"
+          value={urlProvider}
+          onChange={(event) => onProviderChange(event.target.value)}
+          data-testid="search-provider"
+          style={{ maxWidth: 220 }}
+        >
+          {providers.map((provider) => (
+            <option key={provider.id} value={provider.id}>
+              {provider.name}
+            </option>
+          ))}
+        </select>
         <button type="submit" className="btn btn-primary" data-testid="search-submit">
           Search
         </button>

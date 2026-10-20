@@ -273,3 +273,24 @@ Stage Summary:
 - D26 landed: production CSP is per-request and nonce-based; 'unsafe-inline' is GONE from script-src; dev relaxations unchanged and provably production-absent.
 - Gates untouched: D20 (Phase 3), D8 (relay), D18/D19 machinery; no upstream code.
 - Remaining honestly open: operator GPL complete-corresponding-source offer (§1), style-src 'unsafe-inline' (style attributes — separate follow-up), Phase 7 full NOTICE audit.
+
+---
+Task ID: 15
+Agent: main session (continued from D26 handoff)
+Task: CS3-repo integration request → D20 gate closure + Internet Archive provider (Phase 3 begins).
+
+Work Log:
+- CS3 repos (.cs3 Android dex plugins) cannot execute in a browser and are excluded by D19/D6-F/POLICY; the clean-room "repo" path (build-time providers) was explained to the owner, who approved checklist rev 3 + probes + conditional full build via the structured decision.
+- Probes P1 (robots.txt) and P3 (dated ToU copy) completed 2026-10-21 using assistant-level web fetch (sandbox has no raw-HTTP egress; curl to archive.org times out). ToU located behind the live JS gate via the Wayback id_ raw replay; E20 explained. Full text + provenance + robots capture in docs/evidence/archive-org-terms-of-use--2026-10-21.md.
+- Read-only-use review: docs/evidence/ia-tou-review--2026-10-21.md — favorable with conditions (noncommercial, noninfringing via register, pacing/UA, anonymous, kill switch, takedown readiness); residual ambiguity recorded.
+- D20 adopted (docs/decisions.md) with enforced conditions: collection pools (feature_films, film_noir, classic_cartoons) + mandatory per-item rights register; anonymous read-only GETs; identified UA; 1100 ms spacing, <=2 in flight, 429/Retry-After (60 s floor); search cache 10 min / metadata 20 min; progressive MP4 only, no HLS; no relay; kill switch; fixtures-first tests.
+- New module src/server/providers/internetarchive/: provider.ts (search/getMainPage/load/loadLinks with register gates, year-range + runtime parsing, HTML-stripped plots, h.264-preferred derivative selection, opaque dataUrl payloads), schemas.ts (advancedsearch/metadata-union/scrape/dataUrl wire schemas per E1/E2/E3), register.ts (machine-enforced register copy), pacer.ts, index.ts.
+- tests/fixtures/ia/ (5 shape specimens + provenance README recording fixtures 3/6/7 as pending live capture); tests/ia-provider.test.ts — 38 fixture-only tests incl. register enforcement before any network call, restricted-item gate, 429 mapping, kill-switch refusal, host boundary interplay.
+- App wiring: runtime registers IA (id internetarchive, InternetArchive, tvTypes Movie/Documentary); /api/search provider param (validated, 400 on unknown); SearchClient catalog switcher (server-passed provider list).
+- scripts/ia-probe.mjs committed — the tool that closes the provisional state (P1 re-check, P3 byte-faithful re-capture, P2a-P2f, fixtures 1-8, register identifier verification) from an egress-capable session.
+- Docs: checklist addendum section 12 (probe results + honest gaps), docs/evidence/ia-rights-register.md (6 candidate entries, all identifierVerified:false), deployment-requirements.md section 7 (IA operator duties + takedown contact), HANDOFF.md, README.md (root + app).
+- Battery: vitest 453/453 (25 files), tsc/lint/build/build:app clean, app e2e 25/25 (gotcha found + recorded: playwright.app.config reuseExistingServer picked up the stale pre-change server and produced 14 phantom failures; kill stale next-server first), demo e2e 6/6.
+
+Stage Summary:
+- Phase 3 begins: first real provider live in the app under an adopted, conditioned D20; all security invariants (D12/D13/D17/D18/D19/D26) intact.
+- Honest open items (checklist section 12): P2a-P2f playback probes, byte-faithful fixtures, register identifier verification, live end-to-end pass — all via scripts/ia-probe.mjs; playback claims stay OFF until then.

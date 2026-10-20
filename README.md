@@ -39,9 +39,13 @@ decision/worklog records alone.
   `npm run verify:core` tooling. Closes the non-gated items of
   `docs/deployment-requirements.md` (§2, §3, §1 partly — the GPL
   complete-corresponding-source offer stays an operator deployment action).
-- **Gated by design (do not start without owner approval):** Phase 3 real providers
-  (D20 approval process + pre-flight checklist) and Phase 4 task 1 media relay (D8 scope).
-- **Verification at handoff:** 414/414 vitest (24 files), 25/25 app e2e (production build,
+- **Phase 3 has BEGUN under D20 (adopted 2026-10-21, owner-approved):** the Internet Archive
+  public-domain provider is implemented and wired (ToU gate closed with dated evidence; a
+  favorable read-only-use review recorded). Its provisional state — live playback probes (P2a–P2f),
+  byte-faithful fixtures, register-identifier verification — closes via `scripts/ia-probe.mjs`
+  from an egress-capable session. Any provider BEYOND Internet Archive still requires its own
+  pre-flight + ToU gate; the Phase 4 task 1 media relay (D8) remains gated.
+- **Verification at handoff:** 453/453 vitest (25 files, incl. 38 IA-provider tests), 25/25 app e2e (production build,
   under the production nonce CSP), 6/6 demo e2e (incl. 2 real ffmpeg.wasm conversion runs
   through the verified path), tsc / eslint / library build / next build green.
 

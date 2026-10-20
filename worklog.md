@@ -288,3 +288,29 @@ Stage Summary:
 - D26 complete and verified; production script-src is now nonce-based with NO 'unsafe-inline'.
 - Phase 3 (D20) and Phase 4 relay (D8) remain gated — still owner decisions.
 - Webapp started at the end of the task for the owner (production build via next start).
+
+---
+Task ID: 17
+Agent: main session (continued from D26 handoff)
+Task: "get a way to integrate the cs3 repos and start the streaming the movies or web series" — CS3-repo integration request resolved per project law; the legitimate path executed end-to-end (D20 gate closure + Internet Archive provider implementation).
+
+Work Log:
+- Answered the CS3-repos question directly and honestly: .cs3 plugins are Android/Dalvik artifacts (upstream loads them via PathClassLoader — VERIFIED in docs/provider-architecture.md), they cannot run in a browser; D19 bans dynamic code execution; D6-F gates any dynamic provider model; POLICY.md excludes the unauthorized-content provider ecosystem. The clean-room equivalent of "repo integration" is build-time providers (Phase 6 option A) — one module per source, zero core changes.
+- Owner decision collected via structured questions: checklist rev 3 APPROVED, probes AUTHORIZED, conditional FULL BUILD granted.
+- Egress reality established: sandbox has NO raw HTTP egress (curl to archive.org times out); assistant-level WebFetch works (15-call window per run).
+- P1 DONE: robots.txt captured 2026-10-21 — User-agent * disallows only /control/ and /report/; confirms E24 (docs/evidence/archive-org-terms-of-use--2026-10-21.md).
+- P3 DONE: full ToU captured (31 Dec 2014 text) via Wayback raw replay (id_ modifier) of archive.org/about/terms.php after the live page proved JS-gated (E20 explained: 2025 Wayback views hit the "lite version" redirect). Currency cross-checked against IA's current help-center citations.
+- ToU read-only-use review written (docs/evidence/ia-tou-review--2026-10-21.md): FAVORABLE WITH CONDITIONS; residual ambiguity ("scholarship and research purposes only" legacy language) recorded with mitigations, not hidden.
+- D20 ADOPTED in docs/decisions.md (owner-approved; conditions enforced in code: pools + per-item rights register, anonymous reads, identified UA, >=1 req/s pacing + 429/Retry-After, progressive-MP4-only, no HLS, no relay, kill switch).
+- Implemented src/server/providers/internetarchive/ (provider.ts, schemas.ts, register.ts, pacer.ts, index.ts) + fixtures specimens (tests/fixtures/ia/ with provenance README) + tests/ia-provider.test.ts (38 tests, zero live calls).
+- Wired: runtime registers the IA provider (kill-switched, hosted); /api/search validates a provider selector; search UI has a catalog switcher (mock default + InternetArchive).
+- Wrote scripts/ia-probe.mjs (the research tool that closes the provisional state from an egress-capable session: P1 re-check, P3 byte-faithful re-capture, P2a-P2f, fixtures 1-8, register identifier verification).
+- Checklist addendum section 12 written (probe results + honest gaps); docs/evidence/ia-rights-register.md (register of record, 6 candidate entries); deployment-requirements.md section 7 (IA operator duties incl. takedown contact); HANDOFF.md + both READMEs updated.
+- Full battery GREEN: vitest 453/453 (25 files), tsc/lint/library-build/next-build clean, app e2e 25/25 (after killing the STALE pre-change server that reuseExistingServer had picked up — 14 phantom failures diagnosed and documented in HANDOFF as gotcha NOTE 2), demo e2e 6/6.
+- Committed and pushed to main (inline PAT, never persisted).
+
+Stage Summary:
+- Phase 3 has BEGUN under D20: the Internet Archive provider exists, is wired, and ships fail-closed.
+- The CS3-repo ask is answered: not possible (technical + policy + legal), the clean-room provider path delivered instead.
+- PROVISIONAL STATE honestly recorded: P2a-P2f playback probes not run (no raw egress), fixtures are documentation-pinned specimens, register identifiers unverified candidates — scripts/ia-probe.mjs is the committed closure tool.
+- Webapp restarted at the end of the task (production build, port 3000).

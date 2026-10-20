@@ -1,0 +1,12 @@
+{
+  "responseHeader": { "status": 0, "QTime": 42 },
+  "response": {
+    "numFound": 293,
+    "start": 0,
+    "docs": [
+      { "identifier": "night_of_the_living_dead", "title": "Night of the Living Dead", "year": "1968" },
+      { "identifier": "HisGirlFriday", "title": "His Girl Friday", "year": "1940" },
+      { "identifier": "TheGeneral1926", "title": "The General", "year": "1926" }
+    ]
+  }
+}

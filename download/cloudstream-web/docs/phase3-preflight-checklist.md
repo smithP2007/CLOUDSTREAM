@@ -492,3 +492,41 @@ editing this checklist.
 
 *This document is review output only — no implementation files were modified, no probes were run,
 and no provider code exists.*
+
+---
+
+## 12. Addendum — probe results, ToU gate closure, and adoption (2026-10-21)
+
+**Owner approval (recorded via the structured session decision):** checklist revision 3 APPROVED;
+read-only probes AUTHORIZED; conditional "Full build" granted contingent on a favorable ToU
+review. This addendum records what the probes found and what remains open. The note above
+("no probes were run") was true when written and is superseded by this addendum.
+
+### Probe results
+
+| Probe | Result | Evidence |
+|---|---|---|
+| **P1 — robots.txt** | **DONE.** `User-agent: *` disallows ONLY `/control/` and `/report/` (Sitemap line also present). Every path this provider uses (`/advancedsearch.php`, `/services/search/v1/scrape`, `/metadata/`, `/services/img/`) is allowed for our group. **Confirms E24** (previously owner-provided, now independently captured). | captured 2026-10-21 via WebFetch; full text in `docs/evidence/archive-org-terms-of-use--2026-10-21.md` |
+| **P3 — Terms of Use snapshot** | **DONE.** Full ToU captured (text dated 31 Dec 2014) via the Wayback raw replay (`id_`) of `archive.org/about/terms.php`; the LIVE page is JS-gated ("Javascript is required"), and 2025-era Wayback views hit the recorded "lite version" redirect (E20 explained). Currency cross-checked against IA's CURRENT help-center citations (rights page + access policy) which match the captured text. | `docs/evidence/archive-org-terms-of-use--2026-10-21.md` |
+| **ToU read-only-use review** | **DONE — FAVORABLE WITH CONDITIONS.** Operative clauses (noncommercial, noninfringing, no interference, no credentials) all satisfied by the provider design; the 2014 "scholarship and research purposes only" grant language is analyzed as legacy framing with residual ambiguity recorded and mitigated. | `docs/evidence/ia-tou-review--2026-10-21.md` |
+| **P2a–P2f — playback preconditions** | **NOT RUN — no raw-HTTP egress in this session.** The sandbox blocks direct connections (curl to archive.org times out); the assistant-level web fetch cannot exercise byte ranges, redirect chains, or header inspection. Playback claims remain OFF exactly as §5/§10 require ("plausible, unverified"). `scripts/ia-probe.mjs` is committed and runs the full P2 suite when egress exists. | this addendum; D20 provisional-state condition |
+
+**D20 adoption:** after P1 + P3 + the favorable review, **D20 was ADOPTED by the owner**
+(`docs/decisions.md` D20) — collection pools, per-item rights register, pacing values, and the
+no-HLS claim are recorded there. Implementation exists: `src/server/providers/internetarchive/`
+(provider, wire schemas, pacing, register enforcement), wired through the app runtime with the
+kill switch, covered by `tests/ia-provider.test.ts` (38 tests, zero live calls).
+
+### Honest gaps (exit criteria still open — Phase 3 is NOT exited)
+
+1. **Fixtures:** 1, 2, 4, 5, 8 exist as documentation-pinned shape specimens
+   (`tests/fixtures/ia/README.md`); 3, 6, 7 pending live capture. Re-capture via
+   `scripts/ia-probe.mjs` and reconcile schemas with real payloads.
+2. **P2a–P2f** must run before ANY playback claim or UI statement beyond "public-domain films via
+   archive.org — playback not yet verified".
+3. **Register identifiers** are unverified candidates (`identifierVerified: false`) — the probe
+   verifies them and captures per-item evidence files.
+4. **Live end-to-end** (`search → load → loadLinks` on one curated collection, exit criterion d)
+   must be demonstrated from an egress-capable session.
+5. **Takedown/abuse contact** decision (exit criterion e, POLICY §6) recorded in
+   `docs/deployment-requirements.md` — revisit before any deployment beyond private operator use.

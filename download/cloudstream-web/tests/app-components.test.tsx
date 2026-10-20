@@ -163,7 +163,7 @@ describe('SearchClient', () => {
       new Response(JSON.stringify(apiPayload), { status: 200, headers: { 'content-type': 'application/json' } }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    render(<SearchClient />);
+    render(<SearchClient providers={[{ id: 'mock-fixtures', name: 'Mock Fixtures' }]} />);
     await waitFor(() => expect(screen.getByTestId('search-results')).toBeTruthy(), { timeout: 5_000 });
     expect(screen.getByTestId('poster-card').textContent).toContain('Aurora Drift');
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/search?q=aurora'), expect.anything());
@@ -177,7 +177,7 @@ describe('SearchClient', () => {
         new Response(JSON.stringify({ ok: true, data: { page: 1, hasNext: false, items: [] } }), { status: 200 }),
       ),
     );
-    render(<SearchClient />);
+    render(<SearchClient providers={[{ id: 'mock-fixtures', name: 'Mock Fixtures' }]} />);
     await waitFor(() => expect(screen.getByTestId('search-empty')).toBeTruthy(), { timeout: 5_000 });
   });
 
@@ -191,7 +191,7 @@ describe('SearchClient', () => {
         ),
       ),
     );
-    render(<SearchClient />);
+    render(<SearchClient providers={[{ id: 'mock-fixtures', name: 'Mock Fixtures' }]} />);
     await waitFor(() => expect(screen.getByTestId('search-error')).toBeTruthy(), { timeout: 5_000 });
     expect(screen.getByTestId('search-error').textContent).toContain('provider exploded');
   });
