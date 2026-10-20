@@ -10,19 +10,27 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:app": "next build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
+    "dev": "next dev -p 3000",
+    "start": "next start -p 3000",
     "demo": "vite --config vite.config.demo.ts",
     "fixtures:generate": "bash scripts/generate-fixtures.sh",
-    "fixtures:ffmpeg-core": "node scripts/copy-ffmpeg-core.mjs"
+    "fixtures:ffmpeg-core": "node scripts/copy-ffmpeg-core.mjs",
+    "fixtures:web": "node scripts/copy-fixtures-web.mjs",
+    "posters:generate": "node scripts/generate-posters.mjs",
+    "e2e": "playwright test",
+    "e2e:app": "node scripts/copy-fixtures-web.mjs && playwright test --config playwright.app.config.ts"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "0.12.15",
     "@ffmpeg/util": "0.12.2",
     "cheerio": "^1.2.0",
     "hls.js": "1.7.3",
+    "next": "^16.4.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "shaka-player": "5.3.1",

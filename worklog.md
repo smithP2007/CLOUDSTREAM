@@ -206,3 +206,17 @@ Stage Summary:
 - Audit verdict: milestone works end-to-end; one real product defect (UMD core under module worker) fixed; one UX defect (convert-and-play) fixed; dist/ build output untracked + gitignored (hygiene commit); docs updated with verified evidence and GPL obligations.
 - Remaining (not done by design): no SRI on CDN fetch, no CSP on dev demo, MKV/MOV conversion runs + CDN-path run left as documented manual items, no providers/relay/D20 changes.
 - Stopped for owner review as instructed.
+
+---
+Task ID: 12
+Agent: main (Z.ai)
+Task: Phase 5 — Next.js website UI for cloudstream-web (full record in download/cloudstream-web/docs/worklog.md Task 12).
+
+Work Log:
+- Pre-work inspection + latent test-infra defect fix (vitest include pattern silently excluded .tsx component tests; 3 dead-test defects fixed).
+- Implemented the full Next.js 16 app inside download/cloudstream-web (src/app/) over the existing contracts: mock fixture Provider + catalog runtime (host + pipeline + kill switch + health), home/search/details/watch/library/providers + 2 API routes; existing MediaPlayer integrated with additive props only.
+- Turbopack/ffmpeg bundling defect solved via Next-only alias shims + self-hosted pinned ESM copies; demo path untouched (real conversion e2e re-verified).
+- Battery: 395/395 vitest (22 files), tsc/eslint/library-build/next-build clean, 18/18 app e2e (production build), 6/6 demo e2e (incl. real ffmpeg.wasm conversion + cancellation). Docs: D24, deployment-requirements.md, README, roadmap, media-compatibility, worklogs.
+
+Stage Summary:
+- Phase 5 done, browser-verified; D20 gate, no-relay rule, and all security machinery preserved. Stopped for owner review.

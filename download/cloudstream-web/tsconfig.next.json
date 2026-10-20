@@ -1,0 +1,11 @@
+{
+  "$comment": "TypeScript config used ONLY by next dev/build (via next.config.ts typescript.tsConfigPath). Next.js requires jsx=preserve + incremental + the next plugin; these settings must NOT leak into the root tsconfig.json (the Vite demo and library build rely on react-jsx).",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["next-env.d.ts", "src/app/**/*.ts", "src/app/**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

@@ -38,46 +38,45 @@ and what to build next. Full history of every work session is in
    spec, not source to copy)
 5. `docs/worklog.md` — what every previous session actually did and verified
 
-## 2. Current state (verified green at handoff time)
+## 2. Current state (verified green at handoff time — Phase 5, 2026-10-20)
 
-- **Complete:** Phase 0 (policy + decisions), Phase 1 (core provider contract: types,
-  Zod schemas, provider interface, link helpers, provider host, registry), Task A
-  (registry security hardening, D17), Phase 2 steps 1–2 (undici HTTP engine +
-  SSRF guard, D18), and Phase 2 steps 3–5 (parse toolkit with NO JS execution, link
-  pipeline with TTL cache, observability + kill-switch, D19). Find these as commits titled
-  "Phase 1 complete", "Task A: registry security hardening", "Task B: Phase 2 steps 1-2", and
-  "Phase 2 steps 3-5" (match by subject — see the SHA note in `docs/worklog.md`).
-- **Tests: 267/267 passing** across 11 files (`registry` 57, `http-guard` 43, `http-engine` 40,
-  `observability` 23, `packer` 19, `link-pipeline` 16, `provider-host` 23, `contract` 14,
-  `html` 12, `json` 10, `links` 10).
-- `npm run typecheck` (tsc --noEmit), `npm run lint` (eslint), `npm run build`
-  (tsc -p tsconfig.build.json → `dist/`) — all clean at handoff.
-- **Stack:** Node >= 20 (developed on Node 24), pure ESM, TypeScript 5.9 (strict),
-  zod ^4.6.7, undici ^8.12.3, cheerio ^1 (server-only HTML parsing), vitest ^5 (real timers),
-  eslint 9 flat config.
+- **Complete:** Phase 0, Phase 1 (contract layer), Phase 2 (all steps), Phase 4 task 2
+  (player stack, D21–D23, post-implementation audit commit series), and **Phase 5** (the
+  Next.js 16 web application — decision D24): home/search/details/watch/library/providers over
+  a deterministic mock fixture provider, wired ONLY through `ProviderHost` + `LinkPipeline` +
+  the D19 observability wrapper. The Phase 3 gate (D20) is UNTOUCHED and still requires owner
+  approval; the media relay (Phase 4 task 1, D8) is still not built.
+- **Tests: 395/395 vitest** across 22 files + **18/18 app e2e** (Playwright against the
+  PRODUCTION `next build` via `next start`) + **6/6 demo e2e** (includes 2 REAL ffmpeg.wasm
+  conversion runs). NOTE: vitest must collect `.tsx` (include `*.test.{ts,tsx}`) — an earlier
+  pattern silently skipped the component suites; do not regress that.
+- **Verification battery:** `npm test` + `npm run typecheck` + `npm run lint` +
+  `npm run build` (library → dist/) + `npm run build:app` (next build) + `npm run e2e` +
+  `npm run e2e:app` — all green at handoff.
+- **Stack:** Node >= 20 (developed on Node 24), TypeScript 5.9 strict, Next 16.4.2
+  (App Router, Turbopack; dedicated `tsconfig.next.json` — the root tsconfig keeps
+  `jsx: react-jsx` for the Vite demo), zod ^4.6.7, undici ^8.12.3, cheerio ^1, hls.js 1.7.3,
+  shaka-player 5.3.1, @ffmpeg/* (see D24 shims), vitest ^5, playwright 1.64, eslint 9 flat.
 - **Layout:**
-  - `src/core/` — `types.ts`, `schemas.ts`, `provider.ts`, `links.ts`,
-    `provider-host.ts`, `registry.ts`, `index.ts` (barrel)
-  - `src/server/http/` — `engine.ts`, `guard.ts`, `dns.ts`, `headers.ts`, `cookies.ts`,
-    `cache.ts`, `robots.ts`, `ip-types.ts`, `index.ts`
-  - `src/server/parse/` — `html.ts`, `json.ts`, `packer.ts`, `index.ts`
-  - `src/server/links/` — `pipeline.ts`, `index.ts`
-  - `src/server/obs/` — `redact.ts`, `events.ts`, `kill-switch.ts`, `health.ts`, `index.ts`
-  - `tests/` — one test file per module plus shared `helpers.ts` / `http-helpers.ts`
-  - `dist/` — committed build output (ESM + .d.ts)
-- **Commands:** `npm ci && npm test && npm run typecheck && npm run lint && npm run build`
+  - `src/core/` — contract (types, schemas, provider, links, provider-host, registry)
+  - `src/server/http/`, `src/server/parse/`, `src/server/links/`, `src/server/obs/` — runtime services
+  - `src/server/providers/mock/` — deterministic fixture `Provider` + catalog data (app/tests only, never auto-registered)
+  - `src/server/catalog/` — Phase 5 data-access layer + app runtime (kill switch, health, wrapped providers, pipeline)
+  - `src/player/` — playback stack (+ `conversion/next-shims/` Turbopack alias targets)
+  - `src/app/` — the Next.js app (pages, `_components`, `_lib`, `api/`) — EXCLUDED from the library build
+  - `demo/` — dev-only player page; `public/posters/` — committed catalog SVGs;
+    `public/fixtures/` + `public/ffmpeg-lib/` — gitignored runtime copies (staging scripts)
+  - `docs/deployment-requirements.md` — licensing/SRI/CSP gaps that gate ANY deployment
+- **Commands:** `npm ci && npm test && npm run typecheck && npm run lint && npm run build && npm run build:app && node scripts/copy-fixtures-web.mjs && npm run e2e:app`
 
-## 3. The exact next task (Phase 3 gate — STOP first)
+## 3. The exact next task (Phase 3 gate — still STOP first)
 
-`docs/implementation-roadmap.md` now requires a **pre-flight inspection checklist** before ANY
-provider code: for each candidate provider — (1) provider authorization mapped to POLICY.md §3,
-(2) service terms verified + archived (ambiguous/prohibitive ⇒ do not ship), (3) data contracts
-as recorded fixtures, (4) expected responses incl. error/rate-limit payloads, (5) playback
-compatibility within D7/D8 (no DRM), (6) rate limits + robots posture, (7) unresolved risks with
-mitigations or an explicit "do not build". Present the completed checklist to the owner and wait
-for approval. After approval, task 1 = Internet Archive reference provider, composed from
-`HttpEngine` + parse toolkit + `LinkPipeline` + observability wrapper + registry, with the
-unshorten-BEFORE-registry-lookup pre-step (D16/D17) implemented through the engine.
+Phase 5 is done (see `docs/worklog.md` Task 12 and decision D24). Every remaining
+content-facing step is still gated: the **Phase 3 pre-flight inspection checklist** for the
+Internet Archive provider (revision 3, `docs/phase3-preflight-checklist.md`) awaits owner
+review, and adopting **D20** is the only act that authorizes provider implementation. The
+owner may instead commission the Phase 4 task 1 media-relay security review (D8 scope) — also
+a gated decision. Do not start any of these without explicit approval.
 
 ## 4. Gotchas learned the hard way (details in docs/decisions.md D17/D18/D19)
 

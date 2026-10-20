@@ -19,8 +19,10 @@ import { SubtitleSelector } from './SubtitleSelector';
 import { PlaylistPanel } from './PlaylistPanel';
 import { ConversionPanel } from './ConversionPanel';
 import { createConversionEngine, type ConversionEngine } from './conversion/ffmpegConversion';
+import { pickPreferredSubtitle } from './subtitlePreference';
 import type { PlaybackLink, SubtitleFile } from '../core/types';
 import type { PlaybackControllerOptions } from './types';
+import type { PlaybackController } from './PlaybackController';
 import './player.css';
 
 export interface MediaPlayerProps {
@@ -33,6 +35,21 @@ export interface MediaPlayerProps {
   readonly controllerOptions?: PlaybackControllerOptions;
   /** ffmpeg.wasm core base URL (self-hosted); default is the pinned CDN. */
   readonly conversionCoreBaseUrl?: string;
+  /**
+   * Preferred subtitle language (app-local user preference). Applied ONCE
+   * per (language, track list) when no subtitle is active — an explicit
+   * user selection (or deselection) is never overridden.
+   */
+  readonly preferredSubtitleLanguage?: string | null;
+  /**
+   * Auto-start playback of the best provider source once the playlist is
+   * populated (watch-page product behavior: opening an episode plays it).
+   * Runs through the normal decision pipeline (bounded source fallback
+   * included); fires at most once per mount and never interrupts a user
+   * action (only a still-idle player triggers it). Default false — the dev
+   * demo keeps manual start.
+   */
+  readonly autoStart?: boolean;
   readonly className?: string;
   readonly ariaLabel?: string;
 }
@@ -55,6 +72,8 @@ export function MediaPlayer({
   showLocalPicker = true,
   controllerOptions,
   conversionCoreBaseUrl,
+  preferredSubtitleLanguage,
+  autoStart = false,
   className,
   ariaLabel = 'Media player',
 }: MediaPlayerProps) {
@@ -143,6 +162,37 @@ export function MediaPlayer({
   useEffect(() => {
     /* state changes re-render; no side effect needed */
   }, [state.status]);
+
+  // Preferred-subtitle auto-selection: fills an EMPTY selection once per
+  // (controller, language, track list); explicit user choices are never
+  // overridden. Keyed by controller instance because StrictMode's
+  // mount->dispose->swap must re-apply on the fresh controller.
+  const appliedPreferenceRef = useRef<{ controller: PlaybackController | null; identity: string | null }>({
+    controller: null,
+    identity: null,
+  });
+  useEffect(() => {
+    if (preferredSubtitleLanguage == null || preferredSubtitleLanguage.length === 0) return;
+    if (state.subtitles.length === 0 || state.activeSubtitleId !== null) return;
+    const identity = `${preferredSubtitleLanguage}|${state.subtitles.map((track) => track.id).join('|')}`;
+    if (appliedPreferenceRef.current.controller === controller && appliedPreferenceRef.current.identity === identity) {
+      return;
+    }
+    appliedPreferenceRef.current = { controller, identity };
+    const match = pickPreferredSubtitle(state.subtitles, preferredSubtitleLanguage);
+    if (match !== null) void actions.setSubtitle(match);
+  }, [controller, preferredSubtitleLanguage, state.subtitles, state.activeSubtitleId, actions]);
+
+  // Auto-start (opt-in): play the best source once through the normal
+  // decision pipeline. Keyed by controller instance so StrictMode's
+  // mount->dispose->swap starts the FRESH controller exactly once.
+  const autoStartRef = useRef<PlaybackController | null>(null);
+  useEffect(() => {
+    if (!autoStart || autoStartRef.current === controller) return;
+    if (state.items.length === 0 || state.status !== 'idle') return;
+    autoStartRef.current = controller;
+    void actions.playIndex(0);
+  }, [autoStart, controller, state.items.length, state.status, actions]);
 
   const showSourceSelector = state.items.some((item) => item.kind !== 'local-file');
 

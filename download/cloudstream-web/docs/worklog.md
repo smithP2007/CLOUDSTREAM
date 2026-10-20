@@ -206,3 +206,27 @@ Stage Summary:
 - Audit verdict: milestone works end-to-end; one real product defect (UMD core under module worker) fixed; one UX defect (convert-and-play) fixed; dist/ build output untracked + gitignored (hygiene commit); docs updated with verified evidence and GPL obligations.
 - Remaining (not done by design): no SRI on CDN fetch, no CSP on dev demo, MKV/MOV conversion runs + CDN-path run left as documented manual items, no providers/relay/D20 changes.
 - Stopped for owner review as instructed.
+
+---
+Task ID: 12
+Agent: main (Z.ai)
+Task: IMPLEMENTATION — Phase 5 web application UX (Next.js App Router) on the existing machinery: dark-themed home, search with full UI states, title details, watch page integrating the existing MediaPlayer, local library, providers status, deterministic mock provider, full test coverage. No real providers, no relay, D20 untouched.
+
+Work Log:
+- Verified repo state (HEAD 70009a2) + read README/POLICY/decisions/roadmap/HANDOFF; inspected src/core (types/provider/host/registry), src/server (http/parse/links/obs) and src/player (controller/engines/MediaPlayer) before writing anything.
+- LATENT DEFECT FOUND + FIXED: vitest include pattern `tests/**/*.test.ts` silently excluded `tests/player-components.test.tsx` (the player's React component tests never ran; "341" = 16 files). Fixed to `*.test.{ts,tsx}` → surfaced 3 dead-test defects (size-format expectation, cancellation fake not matching the PlaybackError('aborted') contract, MediaPlayer smoke query not scoping selector-vs-playlist surfaces) — fixed all three; suite now truly green (353 in 17 files at that point).
+- Added next@16.4.2 to the SAME package; `next dev/build` uses dedicated `tsconfig.next.json` (typescript.tsconfigPath) so the library/demo tsconfig is untouched; library build excludes `src/app`.
+- Mock fixture provider (src/server/providers/mock/): 15 fictional titles, deterministic rows/search/episodes/links through the REAL Provider contract; posters generated as committed SVGs (scripts/generate-posters.mjs); links target local generated fixtures + authorized public demo streams (provenance recorded) + an honest header-gated relay-required demo.
+- App runtime + catalog layer (src/server/catalog/): globalThis-cached runtime wiring wrapProvider + ProviderKillSwitch + ProviderHealthTracker (fed from the call-event stream) + ProviderHost + LinkPipeline; typed CatalogResult (never throws for provider faults); kill-switch pre-check; /api/search + /api/providers/health (D19 contract, now served, self-validated).
+- App shell + pages (src/app/): dark design system mirroring the player tokens; accessible nav (skip link, aria-current); home (hero + rows, RSC + Suspense); search (loading/empty/error/pagination, URL state); title details (metadata/episodes/recommendations/favorite); watch (MediaPlayer + autoStart + episode nav + recents); library (favorites/recents/prefs, localStorage only); providers (display-only kill switch). StrictMode ON (D24).
+- Player: additive `preferredSubtitleLanguage` + `autoStart` props (StrictMode-safe, keyed by controller instance) + subtitlePreference.ts; NO audio-track controls added (contract defers audioTracks — recorded honestly).
+- Turbopack defect: @ffmpeg/ffmpeg 0.12.15 cannot be bundled (runtime-value classWorkerURL). Solution: Next-only resolveAlias shims (src/player/conversion/next-shims/) runtime-loading pinned self-hosted MIT ESM copies from public/ffmpeg-lib/ (copy script); Vite demo keeps the npm-bundled loader exactly as audited; real conversion e2e re-verified green.
+- Fixed two integration defects found by the new e2e: watch page passed the RAW title token to getTitle (404s); watch page never hydrated the subtitle-language preference; also gave the "Available sources" panel an accessible name.
+- Full battery: vitest 395/395 (22 files), tsc clean, eslint 0 problems, library build + `next build` clean, app e2e 18/18 (PRODUCTION build via next start: navigation incl. real MP4 playback, search states, local-file playback with zero-upload assertion, relay-required never-fetched assertion, authorized Mux HLS stream playback, library persistence, prefs applied in-player, providers/health API, 404), demo e2e 6/6 (incl. 2 REAL ffmpeg.wasm conversions + cancellation).
+- Docs: D24 recorded; docs/deployment-requirements.md (GPL core conveying, CSP, SRI, admin gating); README Phase 5 section; roadmap Phase 5 status + gate wording; media-compatibility.md §7 updates (StrictMode resolution, Next integration).
+
+Stage Summary:
+- Phase 5 complete and browser-verified (agent-browser: desktop + 375px mobile, keyboard controls, subtitle/source selection, honest error paths, zero console errors on the app).
+- Gates preserved: D20 un-adopted; no relay; SSRF/redirect/cache-scope/kill-switch machinery reused, never bypassed; no upstream code.
+- Remaining (recorded, not resolved): CSP/security headers absent (deployment-requirements.md), no SRI on the CDN core fallback, MKV/MOV conversion + CDN-path runs still manual items, kill-switch admin surface still future work.
+- Stopped for owner review as instructed.

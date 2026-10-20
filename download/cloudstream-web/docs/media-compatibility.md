@@ -204,11 +204,20 @@ acquired at deploy time from the pinned npm artifact.
   experimental (upstream statement, recorded in D22).
 - **Live demo streams** (Mux/Apple/Akamai/MDN) are third-party public test endpoints —
   availability is not guaranteed; failures surface as typed network errors.
-- **StrictMode caveat**: React's mount→cleanup→mount simulation disposes the controller and
-  re-runs effects without an intervening render; the hook swaps in a fresh instance when the
-  render body observes disposal, but the dev-only demo page runs without StrictMode. The
-  Phase 5 app shell must make (and record) its own StrictMode decision when integrating the
-  player (see `usePlaybackController.ts` header note).
+- **StrictMode caveat (RESOLVED for the app, D24)**: React's mount→cleanup→mount simulation
+  disposes the controller and re-runs effects without an intervening render; the hook swaps in
+  a fresh instance when the render body observes disposal. The Phase 5 app runs WITH
+  StrictMode enabled (recorded in D24) and the app-side player effects are keyed by controller
+  instance; the dev-only demo page still runs without StrictMode. The no-duplicate-playlist
+  behavior under StrictMode is pinned by a component test.
+- **Next.js integration (Phase 5, D24)**: Turbopack cannot bundle `@ffmpeg/ffmpeg` 0.12.15
+  (runtime-value `classWorkerURL` Worker construct). The Next build aliases the MIT wrapper +
+  util packages to runtime-loader shims (`src/player/conversion/next-shims/`) that load
+  byte-identical, pinned ESM copies self-hosted at `public/ffmpeg-lib/` (staged by
+  `scripts/copy-fixtures-web.mjs`). Serving obligations are unchanged and tracked in
+  `deployment-requirements.md`; conversion in the Next app additionally requires the core to
+  be staged at `public/ffmpeg-core/` (mirror of the demo copy), otherwise it fails with the
+  honest typed error rather than silently degrading.
 - **Local media never leaves the device**: the player contains no upload code path; files are
   read via the File API (4 KiB head sniff) and object URLs only. Verified by code review +
   the E2E network assertions.

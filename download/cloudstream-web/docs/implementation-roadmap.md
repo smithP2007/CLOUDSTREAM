@@ -129,6 +129,15 @@ streams.
 
 **Goal:** the visible product: browse, search, details, episodes, player.
 **Dependency:** Phase 4 (player ready), Phase 1–3 (data).
+**Status (2026-10-20):** implemented WITHOUT real providers (Phase 3 stays gated on D20) —
+decision D24. Routes `/`, `/search`, `/title/[provider]/[hash]`,
+`/watch/[provider]/[title]/[data]`, `/library`, `/providers` + `/api/search` and the D19 health
+contract served at `/api/providers/health`. Data flows ONLY through the existing catalog layer
+(`ProviderHost` + `LinkPipeline` + kill switch/health wrapper) over a deterministic mock
+`Provider` (`src/server/providers/mock/`). The EXISTING `MediaPlayer` powers the watch page
+(new additive props only: `autoStart`, `preferredSubtitleLanguage`). User data (favorites,
+recents, subtitle preference) is localStorage-only; the per-user server DB below is deferred to
+the authenticated-surface decision (POLICY §2) — recorded, not silently dropped.
 **Tasks:**
 
 1. **Routes:** `/` (home: rows from `getMainPage`, horizontal/vertical cards like `HomePageList.isHorizontalImages`), `/search?q=&page=`, `/title/[provider]/[url-hash]` (details: poster, plot, tags, actors, recommendations, sync IDs), `/watch/[...episode]` (player + episode list + source/subtitle pickers).
@@ -186,10 +195,14 @@ P0 Legal ──► P1 Contract ──► P2 Server runtime ──► P3 Provider
 
 ## The exact next implementation task
 
-**STOP — Phase 3 (real providers) requires explicit owner approval. Complete the pre-flight
-inspection checklist FIRST and present it for review. No provider code may be written before the
-checklist is signed off (POLICY.md §3: terms are verified per-service BEFORE implementation
-begins).**
+**STOP — Phase 3 (real providers) requires explicit owner approval. The Phase 5 web
+application is now implemented and verified (decision D24) on the deterministic fixture
+provider; every remaining product step that touches REAL content requires the gate below. No
+provider code may be written before the pre-flight checklist is signed off (POLICY.md §3: terms
+are verified per-service BEFORE implementation begins). With Phase 5 done, the owner can also
+choose to review/adopt D20 for the Internet Archive pre-flight (revision 3) or commission the
+Phase 4 task 1 media-relay security review — both are gated decisions, neither is implied by
+this milestone.**
 
 ### Phase 3 pre-flight inspection checklist (per candidate provider)
 

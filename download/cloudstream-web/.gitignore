@@ -8,3 +8,10 @@ demo/dist-demo/
 test-results/
 playwright-report/
 dist/
+.next/
+next-env.d.ts
+tsconfig.tsbuildinfo
+public/fixtures/
+public/ffmpeg-core/
+demo/public/ffmpeg-lib/
+public/ffmpeg-lib/

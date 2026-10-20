@@ -18,7 +18,9 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
   },
   webServer: {
-    command: 'npm run demo',
+    // The copy script stages the gitignored demo assets (fixtures + ffmpeg
+    // core + ffmpeg-lib wrapper) before the dev server boots.
+    command: 'node scripts/copy-ffmpeg-core.mjs && node scripts/copy-fixtures-web.mjs && npm run demo',
     url: 'http://localhost:5173',
     reuseExistingServer: true,
     timeout: 60_000,

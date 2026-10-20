@@ -2,12 +2,16 @@
 
 A browser-based movie, series and anime application **inspired by** [CloudStream](https://github.com/recloudstream/cloudstream) — designed to run in a PC browser without the Android app.
 
-**Status: Phase 0–1 complete; Phase 2 complete (steps 1–2: HTTP engine + SSRF guard; steps 3–5: parse toolkit + link pipeline + observability). Phase 3 (real providers) is gated on the pre-flight inspection checklist — see the roadmap's "exact next implementation task".**
+**Status: Phase 0–2 complete; Phase 4 task 2 (player stack) complete + audited; Phase 3 (real
+providers) gated on the pre-flight checklist and the D20 approval process; Phase 5 (Next.js web
+application) implemented — fixture catalog, browse/search/details/watch/library/providers, with
+the real player integrated end to end.**
 
 ## Policy & decisions
 
 - [`POLICY.md`](POLICY.md) — product scope, deployment posture, content-source rules, technical-conduct rules (no DRM circumvention, no unrestricted proxy, no upstream/AniKoto reuse).
-- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14, D16–D19) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
+- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D24) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
+- [`docs/deployment-requirements.md`](docs/deployment-requirements.md) — licensing/SRI/CSP/ops gaps that MUST be closed before serving to anyone (GPL core conveying, CSP design, CDN SRI).
 
 ## Documentation
 
@@ -84,14 +88,46 @@ D23 (demo/fixture policy). Compatibility evidence with per-claim verification st
 npm run demo                 # dev-only player page (NO providers; local files + fixtures + lawful demo streams)
 npm run fixtures:generate    # regenerate tiny synthetic fixtures (ffmpeg CLI)
 npm run fixtures:ffmpeg-core # self-host the pinned GPL ffmpeg core into gitignored demo/public/ffmpeg-core/
+npm run fixtures:web         # stage fixtures + ffmpeg-lib wrapper copies into gitignored public/ (Next app)
+npm run posters:generate     # regenerate the deterministic catalog posters (committed)
 npx playwright test          # E2E against the demo page (deterministic, local fixtures)
+npm run e2e:app              # E2E against the PRODUCTION Next build (build:app first)
+```
+
+## Phase 5 — web application (`src/app/`, Next.js 16 App Router)
+
+The visible product, wired EXCLUSIVELY through the existing machinery: the mock fixture
+provider is a real `Provider` implementation served via `ProviderHost` + `LinkPipeline` + the
+D19 observability wrapper — no second provider system, no real content providers (D20 gate
+untouched), no relay. Decisions: D24.
+
+| Route | Contents |
+|---|---|
+| `/` | Dark media-center home: featured hero + provider rows as scrollable poster cards (RSC, Suspense skeletons, typed retryable error panels) |
+| `/search` | Client search: loading/empty/error/pagination states, URL-carried `q`/`page` |
+| `/title/[provider]/[hash]` | Poster, plot, tags, cast, tracker IDs, per-season/per-dub episode lists, recommendations, favorite toggle |
+| `/watch/[provider]/[title]/[data]` | The EXISTING `MediaPlayer` (source/quality + subtitle selectors, local files, honest relay-required failures), episode navigation, auto-start, recent-playback recording |
+| `/library` | Favorites + recents (localStorage only, `csw.library.v1`) + subtitle-language preference (`csw.prefs.v1`) |
+| `/providers` | Installed-provider health + kill-switch DISPLAY (no admin surface — D19/POLICY §2) |
+| `/api/search`, `/api/providers/health` | Typed JSON surfaces over the catalog layer (health = the D19 contract, validated) |
+
+Deterministic mock data: `src/server/providers/mock/` (fictional titles, local SVG posters in
+`public/posters/`, generated media fixtures, authorized public demo streams with recorded
+provenance). Route segments carrying provider data are canonical base64url tokens — opacity
+preserved. React StrictMode is ON (D24); the player hook is StrictMode-safe and pinned by tests.
+
+```bash
+npm run dev        # next dev on :3000
+npm run build:app  # next build (production)
+npm run start      # next start on :3000
+npm test           # vitest — 395 tests (incl. catalog/codec/library/prefs/UI suites)
 ```
 
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (341 tests: provider/HTTP/parsing suites + player suites)
+npm test        # vitest (395 tests: provider/HTTP/parsing suites + player + Phase 5 app suites)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

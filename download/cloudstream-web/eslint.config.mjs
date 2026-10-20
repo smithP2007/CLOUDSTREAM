@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'research/', 'demo/public/', 'demo/dist-demo/'] },
+  { ignores: ['dist/', 'node_modules/', 'research/', 'demo/public/', 'demo/dist-demo/', 'public/', '.next/', 'next-env.d.ts'] },
   ...tseslint.configs.recommended,
   {
     rules: {
@@ -16,7 +16,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/player/**/*.tsx', 'src/player/**/*.ts', 'demo/**/*.tsx'],
+    files: ['src/player/**/*.tsx', 'src/player/**/*.ts', 'demo/**/*.tsx', 'src/app/**/*.tsx', 'src/app/**/*.ts'],
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',

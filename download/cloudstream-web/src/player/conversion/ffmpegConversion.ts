@@ -41,6 +41,15 @@ export interface FfmpegUtilLike {
 
 export type FfmpegLibraryLoader = () => Promise<{ module: FfmpegModuleLike; util: FfmpegUtilLike }>;
 
+/**
+ * Default loader: dynamic npm imports (pinned in package.json). Vite (demo)
+ * and vitest bundle these normally; the Next.js/Turbopack build CANNOT
+ * (Turbopack fails on the wrapper's runtime-value Worker URL), so
+ * next.config.ts aliases BOTH packages to the runtime-loader shims in
+ * ./next-shims/ — the demo path stays exactly as audited, the app path
+ * runtime-loads the self-hosted pinned ESM builds (public/ffmpeg-lib/, staged
+ * by scripts/copy-fixtures-web.mjs; MIT wrapper/util, never bundled).
+ */
 export const defaultFfmpegLoader: FfmpegLibraryLoader = async () => {
   const [module, util] = await Promise.all([import('@ffmpeg/ffmpeg'), import('@ffmpeg/util')]);
   return {

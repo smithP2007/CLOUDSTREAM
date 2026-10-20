@@ -52,6 +52,7 @@ export {
   type ConversionProfile,
 } from './conversion/profiles';
 export { srtToVtt, ensureVtt, looksLikeSrt, looksLikeVtt } from './srtToVtt';
+export { pickPreferredSubtitle } from './subtitlePreference';
 export { createObjectUrlRegistry } from './objectUrls';
 export { inspectLocalFile, defaultHeadReader, SNIFF_HEAD_BYTES } from './localMedia';
 export { PlaybackError, toPlaybackError, type PlaybackErrorCode } from './errors';

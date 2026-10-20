@@ -522,6 +522,66 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
 
 ---
 
+## D24 — Phase 5 web application (Next.js App Router): integration decisions
+
+- **Status:** Adopted (Phase 5, 2026-10-20)
+- **Context:** the visible product (roadmap Phase 5) converts the completed Phase 1/2/4
+  machinery into a browsable application. The task scope: dark-themed home rows, search with
+  full UI states, title details, a watch page reusing the EXISTING `MediaPlayer`, a local
+  library, deterministic mock data — with no real providers (D20 gate untouched), no media
+  relay (D8), and no weakened security (D18/D19 machinery reused, never bypassed).
+- **Decision:**
+  1. **Single package, dedicated TS config.** The app lives in `src/app/` inside the existing
+     package (`next@16.4.2`, App Router, Turbopack). `next dev/build` uses
+     `tsconfig.next.json` via `typescript.tsconfigPath` so Next NEVER rewrites the library's
+     root `tsconfig.json` (the Vite demo depends on `jsx: react-jsx`). The library build
+     (`tsc -p tsconfig.build.json`) excludes `src/app`.
+  2. **One provider system only.** The fixture catalog is a REAL `Provider` implementation
+     (`src/server/providers/mock/`) registered by the app runtime and NEVER by the library.
+     All app data flows through the existing `ProviderHost` (D13 boundary, D12 validation) +
+     `LinkPipeline` (dedupe/sort/TTL cache) + the D19 observability wrapper
+     (`wrapProvider` + kill switch + health tracker). No second provider abstraction exists.
+  3. **Opaque route tokens.** `/title/[provider]/[hash]` and
+     `/watch/[provider]/[title]/[data]` carry the provider-opaque detail URL / episode `data`
+     as canonical base64url tokens (strict fail-closed decoder; the app never inspects them —
+     Phase 1 opacity rule preserved).
+  4. **React StrictMode is ON** (`reactStrictMode: true`). `usePlaybackController` is
+     StrictMode-safe by design (it swaps a disposed controller during render); the component
+     test suite pins the no-duplicate-playlist behavior under StrictMode, and the Phase 5
+     app-side effects (auto-start, subtitle preference) are keyed by controller instance so a
+     StrictMode dispose/swap re-applies exactly once.
+  5. **MediaPlayer gains two opt-in, additive props** (no forks, no duplicated vocabulary):
+     `preferredSubtitleLanguage` (fills an EMPTY subtitle selection once per
+     controller+track-list; explicit user choices always win) and `autoStart` (plays the best
+     provider source once on the watch page through the normal decision pipeline; the demo
+     keeps manual start). Audio-track selection is NOT implemented anywhere: the Phase 1
+     contract defers `audioTracks` beyond v1, and no audio-track control exists in the player
+     — recorded honestly rather than faked.
+  6. **User data is LOCAL-ONLY.** Favorites, recent playback, and the subtitle-language
+     preference persist in `localStorage` (`csw.library.v1`, `csw.prefs.v1`) — nothing is
+     transmitted, and there is no server DB. The roadmap's per-user server DB (Phase 5 task 5)
+     is deferred to the authenticated-surface work (POLICY.md §2 gate); this is a deliberate,
+     recorded deferral, not a silent drop.
+  7. **ffmpeg.wasm under Turbopack.** Turbopack cannot bundle `@ffmpeg/ffmpeg` 0.12.15 (its
+     runtime-value `classWorkerURL` Worker construct defeats static analysis). The Next build
+     aliases both MIT packages (`@ffmpeg/ffmpeg`, `@ffmpeg/util`) to runtime-loader shims
+     (`src/player/conversion/next-shims/`) that load the pinned, self-hosted ESM copies from
+     `public/ffmpeg-lib/` (staged by `scripts/copy-fixtures-web.mjs`). The Vite demo keeps the
+     npm-bundled loader exactly as audited (D22 amendment covers the core; serving obligations
+     in `docs/deployment-requirements.md`).
+  8. **Kill-switch display only.** `/providers` and `GET /api/providers/health` (the D19
+     contract, now actually served) DISPLAY health + kill-switch state. There is deliberately
+     no admin/mutation surface: remote kill-switch administration requires the authenticated
+     admin surface decision (D19, POLICY.md §2).
+- **Consequences:** the app works fully offline against fixtures (authorized demo streams
+  degrade to typed errors); home renders through the provider machinery at request time;
+  search pagination rides the deterministic fixture catalog; all Phase 5 pages are covered by
+  unit tests (395 total) and 18 Playwright app e2e tests against the PRODUCTION build,
+  including real playback (local MP4 fixture), the honest relay-required failure (never
+  fetched), and — when egress exists — the authorized Mux HLS demo stream.
+
+---
+
 ## Open future decisions (summary)
 
 | ID | Topic | Gate |
