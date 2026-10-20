@@ -59,9 +59,9 @@ export declare const ProviderHealthApiRecordSchema: z.ZodObject<{
     status: z.ZodEnum<{
         ok: "ok";
         idle: "idle";
+        disabled: "disabled";
         degraded: "degraded";
         down: "down";
-        disabled: "disabled";
     }>;
     totalCalls: z.ZodNumber;
     totalSuccesses: z.ZodNumber;
@@ -89,9 +89,9 @@ export declare const ProviderHealthSnapshotSchema: z.ZodObject<{
         status: z.ZodEnum<{
             ok: "ok";
             idle: "idle";
+            disabled: "disabled";
             degraded: "degraded";
             down: "down";
-            disabled: "disabled";
         }>;
         totalCalls: z.ZodNumber;
         totalSuccesses: z.ZodNumber;

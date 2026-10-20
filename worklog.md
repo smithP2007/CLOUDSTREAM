@@ -175,3 +175,14 @@ Work Log:
 Stage Summary:
 - docs/phase3-preflight-checklist.md at revision 3 (495 lines); docs-only change; no implementation files touched; no probes run; D20 remains un-adopted and un-adoptable while the ToU gate is open.
 - Stopped for owner review as instructed; awaiting approval before any probe or provider code.
+
+---
+Task ID: 10
+Agent: main (Z.ai)
+Task: IMPLEMENTATION — universal media playback milestone in download/cloudstream-web (see repo worklog Task 10 for the full record).
+
+Work Log:
+- Full record in download/cloudstream-web/docs/worklog.md (Task ID 10): inspection + baseline, ffmpeg.wasm docs research, dash.js package rejection + Shaka adoption, decisions D21-D23, src/player implementation, demo page + fixtures, 341 vitest + 4 Playwright tests, defect fixes (EBML ids, fallback token race, relative-URL policy, StrictMode hazard documentation).
+
+Stage Summary:
+- Player milestone complete: strategy-based src/player/, dev-only demo, no providers/no relay/no D20 adoption; all gates green (341 vitest, 4 e2e, tsc/lint/build). Stopped for owner review.
