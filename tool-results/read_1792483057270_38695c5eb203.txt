@@ -1,0 +1,380 @@
+     1→# Phase 3 Pre-Flight Checklist — Internet Archive Provider
+     2→
+     3→**Status:** DRAFT for owner review — **NOT approved**. No provider code exists or was written.
+     4→**Prepared:** 2026-10-20, after Phase 2 steps 1–5 complete (commit `6fd80cc`; baseline re-verified this
+     5→session: 267/267 vitest tests, 11 files green; `typecheck`/`lint`/`build` clean).
+     6→**Method:** desk review of official Internet Archive documentation (see §0 evidence log). This session's
+     7→sandbox has no direct egress, so live header probes (CORS, byte-range, redirects on file servers) could
+     8→not be executed — they are recorded as explicit evidence gaps (§6, §10) with a probe plan (§9.3).
+     9→**Evidence tags used throughout:** **VERIFIED** (read from an official Internet Archive source on
+    10→2026-10-20, quoted or closely paraphrased), **INFERRED** (derived from official sources + our own design
+    11→decisions; must be pinned by a recorded fixture before any provider code merges), **UNKNOWN** (not
+    12→establishable this session; blocks specific claims, not the whole review), **CONTEXT** (public-record
+    13→background, not re-verified this session).
+    14→
+    15→**Review rule honored:** nothing below is invented. Where a fact could not be verified, it says
+    16→UNKNOWN. A successful metadata lookup is **not** treated as proof of playback (§5), and an item being
+    17→indexed by archive.org is **not** treated as proof it is public domain (§1, §10 R2).
+    18→
+    19→---
+    20→
+    21→## 0. Evidence log (all accessed 2026-10-20)
+    22→
+    23→| # | Source (official Internet Archive) | What it establishes | Tag |
+    24→|---|---|---|---|
+    25→| E1 | <https://archive.org/help/aboutsearch.htm> ("About Search") | advancedsearch.php parameters & usage; 10,000-row sorted-pagination cap; scrape API contract | VERIFIED |
+    26→| E2 | E1, scrape section | `/services/search/v1/scrape` params (q, fields, sorts, count, cursor, total_only), count min 100, cursor pagination, official JSON example, "no absolute guarantee that every item will be returned" | VERIFIED |
+    27→| E3 | <https://archive.org/developers/md-read.html> ("Item Metadata API: Read") | `GET https://archive.org/metadata/{identifier}`; response top-level fields; files-array entry fields; missing identifier ⇒ **empty array**; `error` field for other failures; partial reads | VERIFIED |
+    28→| E4 | <https://archive.org/developers/metadata.html> | MDAPI auth model: most metadata read is public; certain user-JSON fields require auth; write always requires auth; `Authorization: LOW` S3 keys vs cookies; "cookies should only be used by browsers and S3 keys for programmatic access"; read supports compression | VERIFIED |
+    29→| E5 | <https://archive.org/developers/bots.html> ("Bots, LLMs, and Automated Access") | mandatory descriptive User-Agent (tool + version); rate-limit guidance (delays for bulk, honor 429 + `Retry-After`, checksums, limited concurrency); best practices (cache responses, bulk endpoints, exponential backoff) | VERIFIED |
+    30→| E6 | <https://help.archive.org/help/rights> | IA "does not make guarantees as to the copyright status of items"; Terms of Use require use "at their own risk" and "non-infringing" use; uploader-supplied rights info; copyright-agent contact | VERIFIED |
+    31→| E7 | <https://help.archive.org/help/movies-and-videos-a-basic-guide/> | movie rights "vary from movie to movie", many uploader-designated CC; "Archive.org cannot guarantee the accuracy of uploader-provided information"; volunteer-compiled public-domain list has no guarantee; "Some files simply can't be streamed … unsupported media type" | VERIFIED |
+    32→| E8 | <https://help.archive.org/help/files-formats-and-derivatives/> | video items: "We will derive other file formats that are web-friendly such as h.264 mp4" | VERIFIED |
+    33→| E9 | <https://help.archive.org/help/internet-archive-access-policy> | access policy (universal access; ToU governs use; last updated Aug 29, 2023) | VERIFIED |
+    34→| E10 | <https://archive.org/developers/ias3.html> | S3-like API: "Archive is much more likely to issue 307 Location redirects than Amazon"; page also contains "Use Limits" and "Fast GET downloads" sections (upload-focused; not fully captured) | VERIFIED (307 quote) |
+    35→| E11 | <https://archive.org/developers/index-apis.html> | official API inventory (Bots page, MDAPI read/write, Changes API, Tasks API, etc.) | VERIFIED |
+    36→| E12 | <https://archive.org/developers/internetarchive/updates.html> + Python-lib docs | Tasks API exposes rate-limit introspection (`get_tasks_api_rate_limit`) — scoped to Tasks API, **not** to search/metadata | VERIFIED |
+    37→| E13 | E1 "Lucene-like queries" reference + community knowledge | search-field vocabulary (title, creator, collection, mediatype, year, subject, downloads, identifier, language) | INFERRED — pin via fixture |
+    38→| E14 | Solr-standard shape implied by E1/E2 | advancedsearch JSON response shape (`responseHeader`, `response.numFound/start/docs`) | INFERRED — pin via fixture |
+    39→| E15 | E3 gives `dir` + datanode hosts (`d1`/`d2`); community knowledge | download URL forms `https://archive.org/download/{id}/{file}` and datanode file URLs; poster endpoint `https://archive.org/services/img/{id}` | INFERRED — probe |
+    40→| E16 | — | CORS headers on archive.org API/file hosts | UNKNOWN (no egress) |
+    41→| E17 | — | byte-range support (`Accept-Ranges: bytes`, 206 responses) on file hosts | UNKNOWN (no egress) |
+    42→| E18 | — | HLS (`.m3u8`) availability for video items | UNKNOWN (no official doc captured) |
+    43→| E19 | — | numeric rate limits for search/metadata APIs | UNKNOWN (official guidance is qualitative only) |
+    44→| E20 | — | current Terms-of-Use full text (archive.org/about/terms is JS-gated; Wayback snapshot redirected to a "lite" version) | UNKNOWN — open action A1 |
+    45→| E21 | — | subtitle/caption file availability for movies | UNKNOWN (per-item only) |
+    46→| E22 | E4 (restricted metadata classes exist) + community knowledge | lending / access-restricted items require login and must be excluded | INFERRED — pin via fixture |
+    47→| E23 | Hachette v. Internet Archive (2nd Cir. 2024), UMG v. IA settlement | IA operates under active copyright-litigation pressure | CONTEXT — re-verify if posture changes |
+    48→
+    49→---
+    50→
+    51→## 1. Source authorization, API terms, and applicable content licensing
+    52→
+    53→**Policy mapping (roadmap checklist item 1).** The proposed provider serves content category
+    54→**POLICY.md §3.1 (public-domain content)** and §3.2 (CC-licensed content), with the API itself falling
+    55→under §3.4 ("services whose APIs and terms of service permit the intended use"). It matches the
+    56→roadmap's Phase 3 build order #1 and the D3-approved initial source set. A new decision record
+    57→(**D20**, §11) is required before any code.
+    58→
+    59→**What the Archive itself says about rights (E6, E7 — VERIFIED quotes):**
+    60→
+    61→- "The Internet Archive does not make guarantees as to the copyright status of items on archive.org
+    62→  and cannot guarantee information posted on item details or collection pages regarding copyright or
+    63→  other intellectual property rights."
+    64→- The Terms of Use "require that users make use of the Internet Archive's Collections at their own
+    65→  risk and ensure that such use is non-infringing and in accordance with all applicable laws."
+    66→- For movies specifically: rights "vary from movie to movie but many of the films are licensed with
+    67→  Creative Commons Licenses" (uploader-designated), and "Archive.org cannot guarantee the accuracy of
+    68→  uploader-provided information."
+    69→
+    70→**Consequence for us (design constraint, not a claim):** item-level rights status is heterogeneous
+    71→and uploader-asserted. The provider therefore cannot rely on "it is on archive.org" as a rights
+    72→basis. It must operate on a **curated public-domain collection allowlist** plus an item-level
+    73→rights-field gate (e.g. skip items that carry an explicit restricted-rights marker or a
+    74→`licenseurl` pointing at a non-open license — the exact marker fields are INFERRED, to be pinned by
+    75→fixtures per §9). The public-domain film list IA references (E7) is itself explicitly
+    76→no-guarantee, so it may inform curation but cannot be a sole gate.
+    77→
+    78→**API terms for automated access (E5, E4 — VERIFIED):** the Archive publishes a Bots/LLMs/Automated
+    79→Access policy requiring descriptive User-Agent identification and qualitative rate-limiting
+    80→discipline (§7), and documents public, unauthenticated read access to metadata ("most information
+    81→returned by Metadata Read is publicly available", E4). No clause prohibiting read-only API search or
+    82→metadata retrieval for a client application was found in the official pages captured this session;
+    83→the full current Terms of Use could not be captured (E20) and its archived dated copy is **action
+    84→A1** — an explicit gate in §10, mirroring the roadmap rule that ambiguity must be resolved (or the
+    85→provider does not ship).
+    86→
+    87→**Out of scope from minute one (POLICY §3 prohibitions, D7/D8):** lending / controlled-digital-lending
+    88→items and any content requiring an archive.org account (E22), torrent/magnet delivery (excluded from
+    89→our `PlaybackLinkType` v1), and any DRM-protected item (none exists in IA public video, but the gate
+    90→is stated anyway).
+    91→
+    92→**Tag summary for §1:** authorization category VERIFIED (D3/POLICY); terms permitting read-only API
+    93→use INFERRED-from-official-pending-ToU-snapshot (E20 gate); content licensing per-item
+    94→UNKNOWN-with-mitigation (curated allowlist + rights gate).
+    95→
+    96→---
+    97→
+    98→## 2. Official API endpoints and documented request/response formats
+    99→
+   100→All endpoints below are read-only, unauthenticated GETs. Authentication is deliberately NOT used in
+   101→v1 (§8).
+   102→
+   103→| Capability | Endpoint (method) | Parameters | Response (documented) | Tag |
+   104→|---|---|---|---|---|
+   105→| Catalog search | `GET https://archive.org/advancedsearch.php` | `q` (Lucene-like), `output=json`, `rows`, `page`, `sort`, `fl` (E1) | JSON; shape `responseHeader` + `response{numFound, start, docs[]}` per E14 | params VERIFIED; response shape INFERRED (fixture) |
+   106→| Deep pagination / bulk | `GET https://archive.org/services/search/v1/scrape` | `q`, `fields` (comma-list), `sorts` (identifier last), `count` (min 100), `cursor`, `total_only` (E2) | `{items:[…], total, count, cursor}` — official example shows `"items":[{"title":…,"identifier":…}], "total":198879, "count":100, "cursor":"W3si…"}` (E2) | VERIFIED |
+   107→| Search schema (machine-readable) | `GET https://archive.org/services/search/v1` | — | Swagger/OpenAPI description of scrape fields (E1/E2) | VERIFIED |
+   108→| Item metadata | `GET https://archive.org/metadata/{identifier}` (partial reads like `…/metadata/{id}/files/0` documented) | — | top-level: `created, d1, d2, dir, files[], files_count, item_last_updated, item_size, metadata, server, uniq, workable_servers[]` (E3). **Missing identifier ⇒ empty array `[]`, not 404**; other failures ⇒ `error` field (E3) | VERIFIED |
+   109→| File entry fields | in `files[]` | — | `name, source ("original"), format, mtime, size, md5, crc32, sha1` (E3); video items additionally carry format names like "h.264" derivatives (E8) and typically `length`, `height`, `width` (INFERRED — fixture) | fields VERIFIED (core set) |
+   110→| Poster image | `GET https://archive.org/services/img/{identifier}` | — | image | INFERRED (E15) — probe |
+   111→| File download | `GET https://archive.org/download/{identifier}/{filename}` | — | 30x redirect to a datanode (see §6); ias3 doc notes "Archive is much more likely to issue 307 Location redirects than Amazon" (E10) | INFERRED (E15); redirect behavior VERIFIED on ias3 |
+   112→| Item identity | details page `https://archive.org/details/{identifier}` | — | human page; used only as `url` value, never scraped | VERIFIED as canonical item URL (E3/E7 usage) |
+   113→
+   114→**Pagination semantics.** advancedsearch is page/rows based with the official cap: "We limit the
+   115→number of sorted paged results returnable to 10,000. Paged sorted results are supported only until
+   116→the 10,000th result." (E1, VERIFIED). Our `search(query, page)` contract pages by `page + 1` while
+   117→`hasNext` — a page cap of e.g. rows=50 × 200 pages sits far under the documented ceiling.
+   118→`hasNext` is derived from `numFound` vs fetched rows (INFERRED shape, fixture-pinned). The scrape
+   119→API (cursor-based, min count 100) is the better tool for **homepage rows** (e.g. newest items in a
+   120→curated collection) than deep `page` jumps; it is officially intended for deep paging (E1).
+   121→
+   122→**Query fields (E13 — INFERRED).** The search vocabulary we plan to use: `mediatype:movies`,
+   123→`collection:{CURATED}`, `title:`, `year:`, `language:`, `subject:`, `downloads` (sort), `identifier`.
+   124→Pinned by fixture; anything beyond this list is not used.
+   125→
+   126→---
+   127→
+   128→## 3. Example search results, item details, and metadata required by our TypeScript contract
+   129→
+   130→Our contract surface (from `src/core/`) that must be filled: `SearchResponse`, `SearchPage{items,
+   131→hasNext}`, `LoadResponse` (movie variant: `MovieLoadResponse{dataUrl}`), `Episode{data, name,
+   132→season, episode, posterUrl, description, date, runTime}`, `PlaybackLink`, `SubtitleFile`.
+   133→
+   134→**Search (advancedsearch `docs[]` → `SearchResponse`).** Planned mapping, INFERRED per-field until
+   135→fixtures pin the exact response:
+   136→
+   137→| IA field | Contract field | Note |
+   138→|---|---|---|
+   139→| `identifier` | `url` (as `https://archive.org/details/{identifier}`) and `id` | provider-scoped detail URL, opaque to host |
+   140→| `title` | `name` | may be missing → item skipped (D12 strict-but-shallow boundary) |
+   141→| `mediatype:movies` + curated collection | `type` (`'Movie'` or `'Documentary'`) | decision: collections curated for single-work items |
+   142→| `year` | `year` on details; optional on search | |
+   143→| `description` | `plot` (details) | search-time description is often truncated HTML → stripped server-side via parse toolkit |
+   144→| `creator` | `actors` (as `{name}`) on details | role info not supplied by IA |
+   145→| `downloads` | not mapped | no contract field; could rank homepage rows later |
+   146→
+   147→`providerName` = `'InternetArchive'`; `posterUrl` = services/img endpoint (E15, INFERRED);
+   148→`quality`/`score` left null (IA supplies no normalized 0–10 score — do not fabricate one).
+   149→
+   150→**Item details (`metadata` object → `MovieLoadResponse`).** Planned mapping: `metadata.title` →
+   151→`name`; `metadata.year` (may be a range string like "1953" / "1953-1959" — parse defensively) →
+   152→`year`; `metadata.description` → `plot` (HTML-stripped); `metadata.collection` (string or array) →
+   153→`tags`; `metadata.runtime` (when present, format "HH:MM:SS") → `duration` in minutes; `licenseurl` →
+   154→rights gate (not surfaced). `dataUrl` is a **provider-internal JSON blob** `{identifier, fileName}`
+   155→naming the chosen derivative file (opaque per contract; mirrors the upstream pattern where
+   156→`Episode.data` may be a JSON payload — verified upstream behavior, our docs §2.2).
+   157→
+   158→**Files list (`files[]` → playback candidates).** Each video-format entry contributes a candidate
+   159→for `loadLinks`: `name` → file path; `format` → codec class (prefer "h.264" family per E8); `size`
+   160→→ sanity cap; `length`/`height` (INFERRED fields) → quality number for `PlaybackLink.quality`.
+   161→
+   162→**Validation boundary.** Every payload crosses the Phase 2 boundary machinery: size-capped
+   163→`JSON.parse` + Zod (`src/server/parse/json.ts`), non-coercive strict-but-shallow schemas (D12),
+   164→drop-and-count on the link pipeline. The IA-specific quirk that **a missing item returns `[]`**
+   165→rather than 404 (E3) means the metadata response schema is a union: full object OR empty array (→
+   166→treated as `load(): null`).
+   167→
+   168→---
+   169→
+   170→## 4. Item → movie / series / episode mapping in our data model
+   171→
+   172→IA's model (E3, VERIFIED): an **item** (identifier) is a directory of files with metadata; a
+   173→**collection** groups items; there is no native "series/season/episode" object for movies.
+   174→
+   175→Planned mapping (INFERRED — a design decision for D20, not an IA fact):
+   176→
+   177→- **Item = one work.** A curated public-domain film item → `MovieLoadResponse` with a single
+   178→  `dataUrl`. This is the v1 scope and the only mapping with an approved rights story (§1).
+   179→- **Multi-part items (INFERRED, deferred):** some items contain several independently titled video
+   180→  files (e.g. serial episode reels). The contract supports this as `TvSeriesLoadResponse` with one
+   181→  `Episode` per playable file (`Episode.data` = the same JSON blob; `name` from the file's `title`
+   182→  if present). This mapping is **not** in the initial scope; it is recorded here so the data
+   183→  contract (opaque `Episode.data`) will not need to change if approved later.
+   184→- **Collection = not a series object.** A collection (e.g. a curated PD set) can drive a homepage
+   185→  row via scrape/advancedsearch, but we do **not** model collections as `TvSeriesLoadResponse`
+   186→  bundles — IA collections mix works, are not ordered, and have no season/episode semantics.
+   187→- **Anime/dub/live variants:** not applicable; IA provides none of these semantics for our curated
+   188→  set. `tvTypes` for this provider = `['Movie', 'Documentary']` (constant, documented).
+   189→
+   190→Guard-rail: `Episode.data`/`dataUrl` stays opaque to the host (verified contract semantics);
+   191→only the provider decodes it.
+   192→
+   193→---
+   194→
+   195→## 5. Availability of direct MP4 / HLS playback URLs and browser-playback verification
+   196→
+   197→**What is verified (E8, E7):** IA generates **web-friendly h.264 MP4 derivatives** for video items
+   198→("We will derive other file formats that are web-friendly such as h.264 mp4"), and the Archive's own
+   199→help explicitly acknowledges that some files "simply can't be streamed" and fall back to download.
+   200→So the officially documented playback path is **progressive MP4 (byte-range HTTP) of a derivative
+   201→file** — which is exactly the `PlaybackLink.type: 'video'` shape our Phase 4 player maps to native
+   202→`<video>`.
+   203→
+   204→**Direct URL form (INFERRED, E15):** `https://archive.org/download/{identifier}/{fileName}` for the
+   205→h.264 derivative selected from `files[]`, likely 30x-redirecting to a datanode
+   206→(`ia{NNN}.us.archive.org` names are VERIFIED as the item's `d1`/`d2`/`workable_servers` values, E3).
+   207→
+   208→**HLS (E18): UNKNOWN.** No official documentation of `.m3u8` playlists for item video was captured.
+   209→The provider therefore must **not** emit `type: 'hls'` links until a probe proves otherwise; the
+   210→initial link surface is progressive MP4 only.
+   211→
+   212→**Browser playback: NOT VERIFIED — and explicitly not claimable yet.** Nothing this session proves:
+   213→CORS on the file host (E16), byte-range/206 behavior (E17), or that a given item's derivative file
+   214→is actually fetchable and decodable. A metadata 200 is metadata, not playback. Verification requires
+   215→the §9.3 probe plus, later, a real `<video>` test in Phase 4 on recorded fixtures first and live
+   216→files second. Until then the honest status is: **plausible (progressive MP4), unverified.**
+   217→
+   218→---
+   219→
+   220→## 6. CORS, redirects, byte-range requests, subtitles, and other playback constraints
+   221→
+   222→| Constraint | Finding | Tag |
+   223→|---|---|---|
+   224→| CORS on API hosts | unknown; does not matter for us — all IA calls run server-side through `HttpEngine` (D1/D18), CORS is irrelevant server-side | n/a (architecture) |
+   225→| CORS on file hosts | decides whether direct `src` playback works in the browser or links must flow through the Phase 4 scoped relay (D8). **Not verified** — probe P2 | UNKNOWN |
+   226→| Redirects | file URLs are expected to redirect (30x, possibly 307 per E10) to datanodes. Our engine follows redirects manually and re-validates every hop through the full SSRF pipeline (D18.5) — this must stay intact; datanode hosts must be inside the provider's destination allowlist (§8) | redirect existence INFERRED; our handling VERIFIED-by-tests |
+   227→| Byte-range | `<video>` seeking requires range support on the file server (or the relay passing ranges through — Phase 4 requirement). **Not verified** — probe P2 | UNKNOWN |
+   228→| Request headers for playback | none expected for public items (no referer/cookie documented as required for public file GETs) | INFERRED — probe |
+   229→| Response headers for logs | engine events already carry origin+path only, never query strings or headers (D19) — keep | our guarantee |
+   230→| Subtitles | no official statement that movies ship captions; `files[]` is the only per-item source (E21 UNKNOWN). Provider emits `SubtitleFile` only when a `.srt`/`.vtt` entry actually exists in the fixture; otherwise none. No caption fabrication | UNKNOWN (per-item) |
+   231→| Mixed codecs | IA warns some items cannot stream at all (E7); `loadLinks` must treat missing/unusable derivative as "no links" (handled = true, zero emissions), never invent a URL | VERIFIED (caution) |
+   232→| Size variance | derivative ladder varies per item (INFERRED); `files[]` + size fields are the selection basis; quality sorting stays in `LinkPipeline` (unknown-quality-last is already tested) | INFERRED |
+   233→| HTML descriptions | search/detail `description` values are frequently HTML fragments → must pass through the parse toolkit's text extraction (server-side), not be injected anywhere raw | INFERRED (community-known) |
+   234→
+   235→---
+   236→
+   237→## 7. Rate limits, caching rules, timeouts, and error handling
+   238→
+   239→**Published numbers: none (E19 — UNKNOWN).** What IS published (E5, VERIFIED) is a conduct policy:
+   240→descriptive User-Agent mandatory; add delays between bulk requests; honor `429` + `Retry-After`;
+   241→cache responses to avoid repeats; use bulk endpoints; retry with exponential backoff. E12 shows
+   242→rate-limit introspection exists only for the Tasks API — not for search/metadata. Therefore our
+   243→plan is conservative by construction, and its numbers are OURS (recorded in D20, not attributed to
+   244→IA): identified UA string (`cloudstream-web/<version> (+https://github.com/smithP2007/CLOUDSTREAM)`,
+   245→which satisfies the E5 tool+version requirement), per-provider pacing ≥ 1 request/second sustained,
+   246→low concurrency (≤ 2), instant stop-and-backoff on any 429 honoring `Retry-After`.
+   247→
+   248→**Caching rules.** Official best practice is to cache (E5). Our machinery: engine response cache
+   249→(bounded LRU, honors `no-store`/`private`/`max-age`, never caches `set-cookie` responses — D18.6)
+   250→plus `LinkPipeline` TTL cache keyed `(scope, providerName, episodeId)` with the 20-minute default
+   251→mirroring the verified upstream link-cache behavior (D19). Credentialed links are never cached in
+   252→shared scope (D19) — moot for anonymous IA reads but the invariant stays. Proposed provider
+   253→defaults (ours): search responses 10 min, metadata 20 min, files-list handled inside metadata.
+   254→
+   255→**Timeouts.** Host defaults from `src/core/provider.ts` apply (search 15 s, load 20 s,
+   256→loadLinks 30 s — explicitly our values, UNKNOWN upstream, already documented there). The engine's
+   257→total-deadline abort + response byte cap (D18.6) bound any IA payload; metadata for large items can
+   258→be big, so the provider reads via the parse toolkit's size caps rather than unbounded strings.
+   259→
+   260→**Error handling mapping (provider-level, onto existing kinds):**
+   261→
+   262→| Condition | Mapping |
+   263→|---|---|
+   264→| Missing identifier (metadata returns `[]`, E3) | `load()` returns `null` — "nothing to return", not an error |
+   265→| Metadata response carries `error` field (E3) | `ProviderFailure.kind: 'validation'` when schema-rejected; `'provider'` when the provider surfaces it |
+   266→| HTTP 429 (+ `Retry-After`) | treated as rate-limited: fail with `'provider'` + backoff at caller level; engine does not auto-retry (documented) |
+   267→| HTTP 5xx / network faults | engine `HttpFailureKind` `'networkError'`/`'dnsFailure'` → host failure kinds `'provider'`/`'timeout'` respectively by the existing host classification |
+   268→| Timeout / caller abort | `'timeout'` / `'aborted'` (host-owned, D13) |
+   269→| Robots-gated path | `'robotsDisallowed'` (D18.9) — note the engine's fail-closed posture on robots fetch failure; robots.txt for the API paths is itself a probe item (P1) |
+   270→| Schema drift (IA changes shape) | Zod failure → `'validation'`, item dropped and counted (D12) — observability events make drift visible |
+   271→
+   272→---
+   273→
+   274→## 8. Security requirements — what must not be proxied or fetched
+   275→
+   276→1. **Host allowlist (provider config, not a code change):** requests restricted to `archive.org`
+   277→   and `*.us.archive.org` datanode hosts (d1/d2/workable_servers pattern, E3). The D18 SSRF guard,
+   278→   DNS pinning, per-hop redirect re-validation, and fail-closed robots gate stay exactly as adopted;
+   279→   the provider adds a **narrower** destination policy on top, never a weaker one.
+   280→2. **No credentials in v1.** Anonymous read only. Never send `Authorization: LOW`, never hold IA
+   281→   login cookies (E4 describes both — we deliberately use neither). The D19 cross-user cache rule
+   282→   is retained as defense-in-depth.
+   283→3. **Never fetched:** lending / access-restricted items (E22) — enforced at query level (curated
+   284→   collections) AND item level (metadata gate); anything requiring login; the S3-like write API and
+   285→   Tasks API (E10/E12 — read/write surfaces we do not use); `.torrent`/magnet files; user-supplied
+   286→   URLs of any kind (the engine still accepts no client-controlled URLs — D18.1).
+   287→4. **No media relay in Phase 3.** If the CORS probe (P2) shows file hosts do not allow cross-origin
+   288→   playback, the answer is Phase 4's authenticated, quota-capped relay (D8) — not an ad-hoc proxy
+   289→   now, and never an open one.
+   290→5. **No execution of anything extracted** (D19): descriptions, page HTML, file names are DATA. The
+   291→   parse toolkit and static packer decoder are already the only processing paths; IA needs no
+   292→   unpacker at all (its APIs are JSON) — nothing in this provider may introduce `eval`/`new
+   293→   Function`/`node:vm`.
+   294→6. **Untrusted-content hygiene:** HTML fragments inside `description` are text-extracted server-side
+   295→   before display; poster/detail URLs are validated as http(s) by existing boundary schemas before
+   296→   use; non-http(s) link targets are never resolved (parse toolkit guarantee).
+   297→7. **Kill switch:** the provider ships wired through `wrapProvider` (D19) so it can be disabled
+   298→   instantly with a typed `ProviderDisabledError` — this is the POLICY §6 commitment made concrete
+   299→   for the first real provider.
+   300→
+   301→---
+   302→
+   303→## 9. Automated tests and safe fixtures required before integration
+   304→
+   305→**9.1 Fixtures (recorded once, committed, tests never make live calls — roadmap checklist item 3).**
+   306→Probe capture of real payloads, sanitized (nothing user-specific exists in these APIs), one file
+   307→per case under `tests/fixtures/ia/`:
+   308→
+   309→1. `search-success.json` — advancedsearch output for a pinned query in a curated public-domain
+   310→   collection (3 rows, fields per §3).
+   311→2. `search-empty.json` — valid query, zero hits (`numFound: 0`).
+   312→3. `search-error.json` — malformed `q` (documented IA error shape; capture, don't assume).
+   313→4. `metadata-success.json` — full metadata for ONE pinned identifier with h.264 derivative files.
+   314→5. `metadata-missing.json` — the `[]` response (E3) — pins the union schema.
+   315→6. `metadata-error.json` — the `error`-field variant (E3).
+   316→7. `metadata-restricted.json` — an access-restricted/lending item's metadata (E22) — pins the
+   317→   exclusion gate (metadata only; such an item must never yield links).
+   318→8. `scrape-page.json` — one scrape page for a curated collection (homepage-row path, E2).
+   319→
+   320→**9.2 Unit tests (fixture-only, deterministic).** Zod schemas for every fixture; search→
+   321→`SearchPage` mapping incl. `hasNext` derivation and the 10,000-row cap being unreachable at our
+   322→page budget; `load()` → `MovieLoadResponse` incl. year-range parsing and HTML-stripped description;
+   323→`loadLinks()` → derivative selection (h.264 preference, size sanity), quality inference,
+   324→zero-links-when-no-derivative, subtitle emission only when present; restricted-item rejection;
+   325→metadata-`[]` → `null`; error/429 mapping per §7; pipeline interplay (dedupe/sort/cache) with the
+   326→existing D19 semantics; kill-switch refusal (`ProviderDisabledError`); redaction checks (no IA URL
+   327→query strings in events beyond the redacted fields).
+   328→
+   329→**9.3 Live probe script (a research tool, NOT provider code — run once, output recorded into this
+   330→checklist's addendum).** P1: `GET https://archive.org/robots.txt` — verify `/advancedsearch.php`,
+   331→`/metadata/`, `/download/` paths for our UA group. P2: header probe on a pinned file URL — status,
+   332→`Content-Type`, `Accept-Ranges`, a real `Range` request (expect 206), redirect chain + final host,
+   333→`Access-Control-Allow-Origin` presence. P3: fetch one h.264 byte range and confirm decodable MP4
+   334→header bytes. P4: dated Terms-of-Use snapshot archived into `docs/evidence/` (resolves E20/A1).
+   335→No probe runs before owner approval of this checklist.
+   336→
+   337→---
+   338→
+   339→## 10. Unresolved risks, evidence gaps, exit criteria, and recommendation
+   340→
+   341→**Risks & gaps (each with mitigation or a stop condition):**
+   342→
+   343→| # | Risk / gap | Severity | Mitigation | Stop condition |
+   344→|---|---|---|---|---|
+   345→| R1 | Terms of Use full text not archived (E20/A1) — roadmap requires dated archived terms; ambiguity ⇒ do not ship | High | P4 probe archives a dated copy; re-read automated-access clauses | If ToU prohibits our read-only use ambiguously/unfavorably ⇒ provider does not ship (POLICY §3.4) |
+   346→| R2 | No per-item rights guarantee from IA (E6/E7) — indexed ≠ public domain | High | Curated collection allowlist + metadata rights gate + attribution honoring; never treat presence in a PD list as proof | Any curated collection shows systemic mis-asserted rights ⇒ remove collection |
+   347→| R3 | Numeric rate limits unpublished (E19) | Medium | Conservative pacing + 429/Retry-After honoring + caches (E5 discipline); observability tracks 429 events | Repeated 429s despite pacing ⇒ throttle further or suspend provider |
+   348→| R4 | Playback unverified (E16–E18): CORS/range/HLS unknown | Medium | Probes P2/P3 gate any playback claim; provider emits progressive MP4 only; relay is the Phase 4 answer | If ranges/CORS + relay plan cannot support seeking, keep provider read-only until Phase 4 |
+   349→| R5 | IA availability/instability (DDoS history, ongoing litigation climate — E23 CONTEXT) | Medium | Engine timeouts + caches degrade gracefully; provider failure is isolated by host error boundary (D13); kill switch | Sustained outage ⇒ provider reports failure; no code change |
+   350→| R6 | Fixture drift — IA explicitly gives "no absolute guarantee that every item will be returned, or that every item returned will remain" (E2) | Medium | Fixtures pinned to committed files (no live calls in tests); optional opt-in live smoke run separately | — |
+   351→| R7 | robots.txt posture for API paths unknown (P1) | Low | Engine's robots gate is fail-closed already; probe before integration | If a needed path is disallowed for our UA ⇒ do not fetch that path; renegotiate approach |
+   352→| R8 | Scope creep into lending/CDL or "borrowable" content | High | §8 item 3 hard exclusion; D20 records it | None — hard no (POLICY §3) |
+   353→
+   354→**Exit criteria (extends roadmap Phase 3 exit for this provider):** (a) this checklist + probe
+   355→addendum approved and recorded as D20; (b) fixtures 1–8 captured and committed; (c) unit tests per
+   356→§9.2 green with zero live calls; (d) `search → load → loadLinks` works end-to-end on one curated
+   357→collection in the UI-less API layer with kill-switch wired; (e) takedown/abuse contact decision
+   358→revisited before any deployment beyond private operator use (POLICY §6).
+   359→
+   360→**Recommendation: CONDITIONAL GO.** The Internet Archive provider is the lowest-legal-risk option
+   361→in the approved Phase 3 set (D3 explicitly names it), the officially documented API surface covers
+   362→every method of our contract, and our Phase 2 machinery (engine/guard, parse toolkit, link
+   363→pipeline, observability/kill-switch) matches its needs without new security surfaces. Proceed only
+   364→after: (1) owner approves this checklist, (2) probe P4 resolves the Terms-of-Use archival gate
+   365→(A1/R1), (3) D20 records the collection allowlist, pacing values, and the no-HLS claim. Playback
+   366→claims remain OFF until P2/P3 evidence exists.
+   367→
+   368→---
+   369→
+   370→## 11. Decision requested (D20 — draft for owner)
+   371→
+   372→**D20 — Phase 3 authorization: Internet Archive reference provider (conditional).**
+   373→Authorize implementation of the IA provider under: content categories POLICY §3.1/§3.2 only;
+   374→curated public-domain collection allowlist recorded in-repo; anonymous read-only API use;
+   375→progressive-MP4-only links until evidence supports more; conservative pacing + identified
+   376→User-Agent; fixtures-first testing; kill-switch mandatory; no lending/authenticated/torrent/DRM
+   377→surfaces; no media relay in Phase 3. Superseded only by a new explicit decision.
+   378→
+   379→*This document is review output only — no implementation files were modified.*
+   380→
