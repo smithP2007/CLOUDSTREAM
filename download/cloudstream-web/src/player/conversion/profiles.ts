@@ -10,16 +10,24 @@
 
 import type { CanPlayResult, MediaCapabilities } from '../types';
 
-/** Verified build flags of @ffmpeg/core@0.12.10 (documentation, not runtime claims). */
+/** Verified build flags of @ffmpeg/core@0.12.10 (documentation, not runtime claims).
+ * Extracted verbatim from the shipped wasm binary (post-implementation audit,
+ * 2026-10-20); `--disable-autodetect` makes this table exhaustive. */
 export const FFMPEG_CORE_BUILD_FLAGS = [
   '--enable-gpl',
   '--enable-libx264',
+  '--enable-libx265',
   '--enable-libvpx',
-  '--enable-libvorbis',
-  '--enable-libtheora',
-  '--enable-libopus',
   '--enable-libmp3lame',
+  '--enable-libtheora',
+  '--enable-libvorbis',
+  '--enable-libopus',
   '--enable-zlib',
+  '--enable-libwebp',
+  '--enable-libfreetype',
+  '--enable-libfribidi',
+  '--enable-libass',
+  '--enable-libzimg',
 ] as const;
 
 export interface ConversionProfile {

@@ -61,7 +61,16 @@ export interface ConversionEngineOptions {
   env?: { Worker?: unknown; WebAssembly?: unknown };
 }
 
-export const DEFAULT_CORE_CDN_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+/**
+ * Core base URL. MUST serve the ESM core build (dist/esm), not the UMD one:
+ * @ffmpeg/ffmpeg 0.12.15 spawns its internal worker with `{ type: "module" }`,
+ * where `importScripts` does not exist, so its loader falls back to
+ * `await import(coreURL).default` — satisfiable only by the ESM core
+ * ("export default createFFmpegCore"). Verified empirically in the
+ * post-implementation audit (2026-10-20): the UMD core fails with
+ * ERROR_IMPORT_FAILURE under a module worker; the ESM core loads and converts.
+ */
+export const DEFAULT_CORE_CDN_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
 const DEFAULT_EXEC_TIMEOUT_MS = 30 * 60_000;
 
 export interface ConversionResult {

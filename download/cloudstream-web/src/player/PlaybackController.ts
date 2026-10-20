@@ -360,11 +360,20 @@ export class PlaybackController {
 
   /** Adds a converted blob (client-side conversion output) to the playlist. */
   async addLocalBlob(blob: Blob, name: string, convertedFrom?: string): Promise<void> {
+    const knownIds = new Set(this.items().map((item) => item.source.id));
     const file = new File([blob], name, { type: blob.type });
     await this.addLocalFiles([file]);
+    const added = this.localItems.find((item) => !knownIds.has(item.source.id));
+    if (!added) return;
+    // "Convert and play" is an explicit user action: play the output even
+    // when the playlist already has a current item (e.g. the conversion
+    // input). addLocalFiles only auto-plays into an EMPTY playlist.
+    const combinedIndex = this.items().indexOf(added);
+    if (combinedIndex !== this.currentIndex) await this.playIndex(combinedIndex, false);
     if (convertedFrom) {
-      const item = this.localItems.at(-1);
-      if (item) item.note = `converted output (${convertedFrom})`;
+      // Set AFTER playIndex: attemptIndex rewrites `note` with the current
+      // playback decision (native path clears it); provenance must survive.
+      added.note = `converted output (${convertedFrom})`;
       this.emit();
     }
   }

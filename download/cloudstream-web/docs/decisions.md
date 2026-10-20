@@ -472,6 +472,18 @@ Started: Phase 0 (2026-10-20). Evidence base: `docs/repository-analysis.md`, `do
      --enable-zlib` (read from the binary). The core is a **devDependency**: a script copies it
      into the demo's gitignored public dir for self-hosted loading; the pinned CDN is the
      fallback. The core is NEVER statically imported, never bundled, and never committed.
+     **Amendment (post-implementation audit, 2026-10-20):** the core MUST be the **ESM build**
+     (`dist/esm`) — the wrapper's internal worker is `{ type: "module" }` where `importScripts`
+     does not exist, so only the ESM core (`export default createFFmpegCore`) loads; the UMD
+     build fails with `ERROR_IMPORT_FAILURE` (verified empirically; the default CDN base and the
+     copy script were corrected). The audit also verified the full embedded configure line
+     (adds `--enable-libx265 --enable-libwebp --enable-libfreetype --enable-libfribidi
+     --enable-libass --enable-libzimg`; `--disable-autodetect` makes this table exhaustive) and
+     confirmed via a REAL browser conversion run (see `docs/media-compatibility.md` §4–§5) that
+     the pipeline works end-to-end. Serving the core to browsers conveys it — GPL-2.0 license
+     text, corresponding-source links and notices are a DEPLOYMENT obligation (the npm packages
+     ship no license file); recorded in media-compatibility §5 and flagged for the Phase 7
+     NOTICE audit.
   3. **Conversion bounds & honesty:** input capped (default 1.5 GiB, well under the wasm32 2 GiB
      ceiling upstream documents); progress events are best-effort (upstream marks the progress
      hook experimental); cancellation terminates the FFmpeg worker; supported codecs are the

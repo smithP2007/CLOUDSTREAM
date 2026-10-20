@@ -1,10 +1,3 @@
-# Multi-Agent Worklog
-
-> Canonical work record for this project. Append below after each work session
-> (template in HANDOFF.md). Note: commit SHAs mentioned in early entries refer to the
-> original workspace repository; this GitHub export was produced by a subtree split,
-> so match commits by their subject/message rather than by hash.
-
 # Worklog
 
 ---
@@ -186,19 +179,30 @@ Stage Summary:
 ---
 Task ID: 10
 Agent: main (Z.ai)
-Task: IMPLEMENTATION — universal media playback milestone (owner instruction): local files + provider-contract streams, strategy-based player, optional client-side conversion, dev-only demo page. No Phase 3 providers, no media relay.
+Task: IMPLEMENTATION — universal media playback milestone in download/cloudstream-web (see repo worklog Task 10 for the full record).
 
 Work Log:
-- Baseline: installed deps from lockfile; verified 267/267 tests, typecheck/lint/build clean at HEAD f6c4031. Inspected POLICY/decisions/roadmap/architecture + core contract (PlaybackLink types already include 'dash').
-- Researched ffmpeg.wasm official docs BEFORE installing (versions, worker setup, toBlobURL loading, progress-experimental caveat); verified licenses on npm; read build flags from the pinned @ffmpeg/core@0.12.10 binary (GPL: --enable-gpl --enable-libx264 --enable-libvpx --enable-libvorbis --enable-libtheora --enable-libopus --enable-libmp3lame --enable-zlib).
-- REJECTED the registry's `dash.js@4.0.1` package (its typings are an unrelated React UI kit — not the MPEG-DASH player); adopted task-sanctioned Shaka Player 5.3.1 (Apache-2.0) for the `dash` link type. Recorded in D22.
-- Recorded decisions D21 (strategy-based player, NO relay, header/referer links = relay-required, local media never uploaded), D22 (dependency pins + lazy loading + GPL-core handling + conversion bounds), D23 (dev-only demo page + generated fixtures + lawful demo-stream provenance). D20 stays reserved for the pending Phase 3 authorization draft.
-- Implemented src/player/: types/errors, formatSupport (signature sniffing incl. EBML DocType parser; capability probes), playbackDecision (validate → relay-required → native → engine → conversion offer → typed failure; bounded fallback), localMedia (4 KiB head sniff; object-URL registry), srtToVtt, PlaybackController (state machine, quality sort via CORE helpers, bounded fallback with token-guarded attaches, subtitle pipeline, dispose), engines (native, hls.js lazy, shaka lazy) + registry (lazy factories), conversion (profiles from verified build table + lazy ffmpeg.wasm engine with progress/cancel/cleanup/bounds), React UI (MediaPlayer, LocalFilePicker, SourceSelector, SubtitleSelector, PlaylistPanel, ConversionPanel, usePlaybackController) + player.css.
-- Demo: vite dev page (npm run demo) with local picker, tiny generated fixtures (scripts/generate-fixtures.sh — MP4/WebM/Ogg/MKV/AVI/MOV/HLS/VTT/SRT, 1-2s each, no copyrighted material), authorized demo streams with provenance (Blender/Mux/Apple/Akamai/MDN), relay-required + unsupported demo entries; scripts/copy-ffmpeg-core.mjs self-hosts the GPL core into gitignored demo/public/ffmpeg-core/.
-- Tests: 5 new vitest files (format-support, decision, srt, conversion with fake wasm module, controller with fakes) + component tests (jsdom/RTL) — 341 total. Playwright e2e (chromium headless shell): local WebM playback with pause/resume, source-selector playback, relay-required with ZERO network requests, AVI honest limitation — 4 passed. Real VP9/Opus decode verified in-browser; H.264 paths documented as manual (OSS Chromium lacks proprietary codecs).
-- Fixed real defects found by tests/debug: EBML DocType raw-id comparison; handleFatal token bump (fallback vs late attach race); controller attachElement disposed-guard; post-attach status sync; same-origin relative URL acceptance with scheme rejection (javascript:/data:/ftp:); StrictMode dispose/swap hazard documented (demo runs without StrictMode; Phase 5 must record its own decision).
+- Full record in download/cloudstream-web/docs/worklog.md (Task ID 10): inspection + baseline, ffmpeg.wasm docs research, dash.js package rejection + Shaka adoption, decisions D21-D23, src/player implementation, demo page + fixtures, 341 vitest + 4 Playwright tests, defect fixes (EBML ids, fallback token race, relative-URL policy, StrictMode hazard documentation).
 
 Stage Summary:
-- src/player/ complete and independently testable; contract unchanged (no new media types; core helpers reused); 341/341 vitest + 4/4 Playwright green; tsc/eslint/build clean; demo build shows lazy chunks (main 352 KB; hls.js 564 KB + shaka 848 KB isolated).
-- NOT built: media relay (Phase 4 task 1), server-side transcoding, any provider, D20 adoption. Known limits + manual verification steps recorded in docs/media-compatibility.md.
+- Player milestone complete: strategy-based src/player/, dev-only demo, no providers/no relay/no D20 adoption; all gates green (341 vitest, 4 e2e, tsc/lint/build). Stopped for owner review.
+
+---
+Task ID: 11
+Agent: main (Z.ai)
+Task: Post-implementation audit of the media-player milestone (commit 9b697e9) — commit inspection, REAL ffmpeg.wasm conversion run, core version/license audit, core-loading path review, docs update, full verification battery. No new features; no providers; no relay; D20 untouched.
+
+Work Log:
+- Inspected 9b697e9 (148 files, +11,100/−115): no node_modules, no stray media, no ffmpeg-core binaries committed; fixtures are script-generated synthetic testsrc/sine assets (19–68 KB). DEFECT: 88 compiled files under dist/player/ (715 KB) were committed as build output; dist/core/ (108 files) was already tracked from earlier environment auto-commits.
+- Ran the REAL conversion: initial E2E failed — core init ERROR_IMPORT_FAILURE. Root cause (verified in the pinned wrapper source + in-browser probes): @ffmpeg/ffmpeg 0.12.15 spawns a { type: "module" } worker where importScripts is unavailable; its fallback needs the ESM core (export default), but the product loaded the UMD core. Fixed DEFAULT_CORE_CDN_BASE (…/dist/esm) and scripts/copy-ffmpeg-core.mjs (copies dist/esm).
+- Verified REAL conversion end-to-end (Playwright Chromium + standalone diagnostic scripts/audit-ffmpeg-real.mjs): self-hosted core 200 (~0.4 s init), AVI (MPEG-4+MP3) → MP4 (H.264+AAC) exit 0, output decoded + played, progress events observed, mid-run Cancel → worker terminated → typed "Conversion cancelled." → engine rebuilt and converted again, virtual-FS cleanup ok, input SHA-256 unchanged, zero POST/PUT/PATCH, all requests on demo origin + documented demo-stream hosts.
+- Found + fixed "Convert and play" defect: addLocalBlob only auto-played into an empty playlist; now always plays the converted output (note set after playIndex so the decision pipeline doesn't clear it).
+- License audit (from the actual artifact): @ffmpeg/core 0.12.10 = GPL-2.0-or-later (npm field + --enable-gpl + libx264/libx265 embedded); full configure line extracted from the wasm (--disable-autodetect → exhaustive table: libx264/x265/vpx/mp3lame/theora/vorbis/opus/zlib/webp/freetype/fribidi/ass/zimg); binary output shows Lavf61.7.103/Lavc59.37.100 (FFmpeg 7.1 series) + x264 core 164; npm packages ship NO license file; wasm sha256 9f57947a… recorded.
+- Serving obligations documented (media-compatibility §5): serving the core to browsers = conveying → GPL-2.0 license text + corresponding-source links + notices required at deployment; devDependency status and git-exclusion do NOT remove them; local-only dev is exempt. CDN fallback pinned but fetched WITHOUT integrity verification — recorded gap; self-hosted pinned core recommended for deployment; CSP notes (blob: workers, 'wasm-unsafe-eval').
+- Updated docs/media-compatibility.md (real-run evidence, ESM-core finding, new §5 licensing record, manual list re-scoped) and docs/decisions.md (D22 amendment).
+- Full battery: 341/341 vitest, tsc clean, eslint 0, production build OK, Playwright 6/6 (incl. 2 real-conversion tests).
+
+Stage Summary:
+- Audit verdict: milestone works end-to-end; one real product defect (UMD core under module worker) fixed; one UX defect (convert-and-play) fixed; dist/ build output untracked + gitignored (hygiene commit); docs updated with verified evidence and GPL obligations.
+- Remaining (not done by design): no SRI on CDN fetch, no CSP on dev demo, MKV/MOV conversion runs + CDN-path run left as documented manual items, no providers/relay/D20 changes.
 - Stopped for owner review as instructed.
