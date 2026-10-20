@@ -38,6 +38,12 @@ export declare class TtlCache<V> {
     set(key: string, value: V, ttlMs: number): boolean;
     /** Deletes `key`; returns whether a live entry was removed. */
     delete(key: string): boolean;
+    /**
+     * Snapshot of the keys that are currently LIVE (unexpired). Order follows
+     * LRU (oldest first). Used by higher layers that index entries externally
+     * (e.g. per-provider invalidation in the link pipeline).
+     */
+    keys(): string[];
     /** Removes all expired entries. Returns how many were removed. */
     purgeExpired(): number;
     clear(): void;

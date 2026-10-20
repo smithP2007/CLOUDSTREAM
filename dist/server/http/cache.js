@@ -99,6 +99,20 @@ export class TtlCache {
         this.#entries.delete(key);
         return entry.expiresAt > Date.now();
     }
+    /**
+     * Snapshot of the keys that are currently LIVE (unexpired). Order follows
+     * LRU (oldest first). Used by higher layers that index entries externally
+     * (e.g. per-provider invalidation in the link pipeline).
+     */
+    keys() {
+        const now = Date.now();
+        const out = [];
+        for (const [key, entry] of this.#entries) {
+            if (entry.expiresAt > now)
+                out.push(key);
+        }
+        return out;
+    }
     /** Removes all expired entries. Returns how many were removed. */
     purgeExpired() {
         return this.#purgeExpired();

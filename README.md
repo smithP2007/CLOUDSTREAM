@@ -2,12 +2,12 @@
 
 A browser-based movie, series and anime application **inspired by** [CloudStream](https://github.com/recloudstream/cloudstream) — designed to run in a PC browser without the Android app.
 
-**Status: Phase 0–1 complete; Phase 2 steps 1–2 (HTTP engine + SSRF guard) complete; Phase 2 steps 3+ not started.**
+**Status: Phase 0–1 complete; Phase 2 complete (steps 1–2: HTTP engine + SSRF guard; steps 3–5: parse toolkit + link pipeline + observability). Phase 3 (real providers) is gated on the pre-flight inspection checklist — see the roadmap's "exact next implementation task".**
 
 ## Policy & decisions
 
 - [`POLICY.md`](POLICY.md) — product scope, deployment posture, content-source rules, technical-conduct rules (no DRM circumvention, no unrestricted proxy, no upstream/AniKoto reuse).
-- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14, D16–D18) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
+- [`docs/decisions.md`](docs/decisions.md) — decision record (D1–D14, D16–D19) with explicitly open future decisions (D2-F, D3-F, D6-F, D7-F, D15-F).
 
 ## Documentation
 
@@ -47,11 +47,26 @@ Host semantics pinned by tests (`tests/`, vitest, 187 tests): error isolation be
 
 Engine behavior is pinned by `tests/http-guard.test.ts` (43 unit tests, mocked DNS, zero network) and `tests/http-engine.test.ts` (40 integration tests against a loopback-only node:http server with explicitly approved `127.0.0.1` — the real guard/DNS/pinning pipeline runs without touching the real network). Security posture and explicit limitations: `docs/decisions.md` D18.
 
+## Phase 2 — steps 3–5 (`src/server/parse/`, `src/server/links/`, `src/server/obs/`)
+
+| Module | Contents |
+|---|---|
+| `parse/html.ts` | Cheerio toolkit: size-capped never-throwing parse, text/attribute extraction, absolutized `<a href>` link extraction (non-http(s) targets never resolved), bounded structured metadata (title/description/canonical/OpenGraph) |
+| `parse/json.ts` | JSON boundary: size-capped `JSON.parse` (typed errors, never throws) + one-shot parse-and-Zod-validate with host-consistent issue formatting |
+| `parse/packer.ts` | Deterministic `p/a/c/k/e` unpacker: PURE STATIC string transform (radix 2–62, `.split('|')` dictionaries, JS string-literal escapes) — never parses code, never evaluates; no `eval`/`new Function`/`node:vm` anywhere in the project (D19) |
+| `links/pipeline.ts` | `LinkPipeline`: schema re-validation (drop-and-count), reuse of core dedupe/quality-sort, subtitle dedupe by normalized (language, url), bounded single-flight TTL cache per (scope, provider, episode) — default TTL mirrors the upstream 20-minute link cache; credential-bearing links are never cached under the shared scope |
+| `obs/redact.ts` | Log redaction: URL credentials dropped, sensitive query params value-redacted, fragments dropped, message length caps; reuses the engine's header redactor |
+| `obs/events.ts` | Structured provider-call events (start/end, duration, outcome, failure kinds incl. `killed`), engine-event forwarding, `wrapProvider` enforcement wrapper |
+| `obs/kill-switch.ts` | In-memory provider kill switch (per-provider + global, with reasons) mirroring the upstream `SitePlugin.status` pattern; the remote admin surface is future work |
+| `obs/health.ts` | `ProviderHealthTracker` (idle/ok/degraded/down/disabled transitions) + the future `GET /api/providers/health` response contract as Zod schemas |
+
+**No JavaScript execution exists in this project** (owner instruction, D19): extracted/packed content is decoded as text only. General JS execution is deferred until a legitimate provider needs it, and then requires a separately isolated runtime and a security review (gated by D6-F). Test counts: `tests/html.test.ts` (12), `tests/json.test.ts` (10), `tests/packer.test.ts` (19), `tests/link-pipeline.test.ts` (16), `tests/observability.test.ts` (23).
+
 ## Commands
 
 ```bash
 npm install
-npm test        # vitest (187 tests)
+npm test        # vitest (267 tests)
 npm run lint    # eslint
 npm run typecheck
 npm run build   # emits dist/ (bundler-consumed ESM + declarations)

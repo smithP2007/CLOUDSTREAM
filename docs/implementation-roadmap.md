@@ -63,12 +63,17 @@
 
 **Goal:** build the server-side machinery that CloudStream's Android host provides.
 **Dependency:** Phase 1.
-**Status:** ◐ In progress — tasks 1–2 complete (2026-10-20): `src/server/http/` engine + guard (`D18`); tasks 3–5 pending.
+**Status:** ✅ Complete (2026-10-20) — tasks 1–2 (`src/server/http/` engine + guard, D18) and tasks 3–5 (`src/server/parse/`, `src/server/links/`, `src/server/obs/` — D19) implemented; 267 vitest tests, typecheck/lint/build clean. Phase 3 is gated on the pre-flight checklist below.
 **Tasks:**
 
 1. **HTTP engine** (`src/server/http/`): fetch/undici client with cookie jar, per-provider UA/referer profiles, redirect + size + timeout caps, response caching with TTL (equivalent of nicehttp's `cacheTime` and the 20-min link cache, `RepoLinkGenerator.kt:73`).
 2. **Hardening** (`src/server/http/guard.ts`): SSRF protection (private IP ranges, DNS rebinding checks), header normalization for anything we replay upstream (strip hop-by-hop/`Cookie`/`Host`), robots-considerate fetch policy.
 3. **HTML/JSON toolkit:** cheerio + zod, plus a `p/a/c/k/e` (JsUnpacker-equivalent) unpacker and a sandboxed JS snippet runner (`node:vm` with no network/fs) for Rhino-style de-obfuscation needs — only if a provider requires it.
+   > **Revised 2026-10-20 (owner instruction, D19):** NO JavaScript execution — no `eval`, no
+   > `new Function`, no `node:vm` as a security boundary. Implemented instead: cheerio HTML
+   > helpers, size-capped JSON+Zod boundary parsing, and a PURE STATIC `p/a/c/k/e` decoder.
+   > General JS execution stays deferred behind a separately isolated runtime + security review
+   > (gated by D6-F).
 4. **Link pipeline** (`src/server/links/`): dedupe by URL, quality sort (`sortUrls` semantics, `MainAPI.kt:769–771`), subtitle name dedupe (`RepoLinkGenerator.kt:112–134`), TTL cache per `(provider, episodeId)`.
 5. **Observability:** structured logs per provider call, health-check endpoint (`GET /api/providers/health`) feeding a kill-switch (remote `status` flag like `SitePlugin.status`).
 
@@ -175,17 +180,35 @@ P0 Legal ──► P1 Contract ──► P2 Server runtime ──► P3 Provider
 
 ## The exact next implementation task
 
-**Implement Phase 2, steps 3–5: HTML/JSON toolkit, link pipeline, and observability.**
-1. **HTML/JSON toolkit**: cheerio + zod JSON parsing helpers, a `p/a/c/k/e` (JsUnpacker-equivalent)
-   unpacker and a `node:vm`-sandboxed snippet runner (no network/fs) — only if a provider requires
-   them.
-2. **Link pipeline** (`src/server/links/`): dedupe by URL, quality sort (`sortUrls` semantics),
-   subtitle name dedupe, TTL cache per `(provider, episodeId)` — reusing `src/core/links.ts`
-   behaviors and `TtlCache`.
-3. **Observability**: structured per-provider-call logging (via the engine's redacted event sink),
-   `GET /api/providers/health` shape, and the provider kill-switch flag (mirrors
-   `SitePlugin.status`, `RepositoryManager.kt:50–78`).
+**STOP — Phase 3 (real providers) requires explicit owner approval. Complete the pre-flight
+inspection checklist FIRST and present it for review. No provider code may be written before the
+checklist is signed off (POLICY.md §3: terms are verified per-service BEFORE implementation
+begins).**
 
-Everything builds on the now-complete engine + guard (D18): fetch through `HttpEngine`, validate
-through the guard, unshorten link targets through the engine BEFORE registry lookups (per D16/D17).
-Do NOT start real providers (Phase 3) until these are in and tested.
+### Phase 3 pre-flight inspection checklist (per candidate provider)
+
+1. **Provider authorization** — the content category is mapped to POLICY.md §3 (categories 1–4
+   only) and recorded in a new decision entry before any code.
+2. **Service terms** — the target's current terms of service / API terms permit the intended
+   read-only use; verified and archived (dated copy) per service. Ambiguity or prohibition ⇒ the
+   provider does not ship.
+3. **Data contracts** — documented endpoints (paths, methods, parameters, auth), response
+   schemas mapped onto the Phase 1 types, and pagination behavior; captured as recorded fixtures
+   so tests never make live calls.
+4. **Expected responses** — sample payloads per endpoint (success / empty / error /
+   rate-limited) with the Zod schemas they must satisfy, and the error mapping to
+   `HttpFailureKind` / `ProviderFailureKind`.
+5. **Playback compatibility** — the link shapes actually issued (progressive / HLS / DASH),
+   required headers/referer, and whether playback fits the Phase 4 relay scope (D7/D8: no DRM,
+   no open proxy); anything DRM-protected is out of scope and stops the review.
+6. **Rate limits** — documented limits, robots.txt posture, and a per-provider
+   pacing/backoff plan (engine `respectRobots`, `timeoutMs`, cache settings per provider).
+7. **Unresolved risks** — every uncertainty (terms, endpoint stability, anti-bot posture,
+   geo-restrictions) listed explicitly with either a mitigation or an explicit "do not build"
+   outcome.
+
+After the checklist is approved, Phase 3 task 1 is the **Internet Archive reference provider**
+(roadmap Phase 3 build order), composed from the now-complete Phase 2 pieces: `HttpEngine`
+(fetch), the parse toolkit (HTML/JSON), `LinkPipeline` (resolve + cache), the observability
+wrapper + kill switch, and the registry — including the unshorten-BEFORE-registry-lookup
+pre-step from D16/D17 (implemented via the engine, never via ad-hoc fetches).

@@ -42,45 +42,44 @@ and what to build next. Full history of every work session is in
 
 - **Complete:** Phase 0 (policy + decisions), Phase 1 (core provider contract: types,
   Zod schemas, provider interface, link helpers, provider host, registry), Task A
-  (registry security hardening, D17), Task B = Phase 2 steps 1–2 (undici HTTP engine +
-  SSRF guard, D18). Find these as commits titled "Phase 1 complete", "Task A: registry
-  security hardening", and "Task B: Phase 2 steps 1-2" (match by subject — see the SHA
-  note in `docs/worklog.md`).
-- **Tests: 187/187 passing** across 6 files (`registry` 57, `http-guard` 43,
-  `http-engine` 40, `provider-host` 23, `contract` 14, `links` 10).
+  (registry security hardening, D17), Phase 2 steps 1–2 (undici HTTP engine +
+  SSRF guard, D18), and Phase 2 steps 3–5 (parse toolkit with NO JS execution, link
+  pipeline with TTL cache, observability + kill-switch, D19). Find these as commits titled
+  "Phase 1 complete", "Task A: registry security hardening", "Task B: Phase 2 steps 1-2", and
+  "Phase 2 steps 3-5" (match by subject — see the SHA note in `docs/worklog.md`).
+- **Tests: 267/267 passing** across 11 files (`registry` 57, `http-guard` 43, `http-engine` 40,
+  `observability` 23, `packer` 19, `link-pipeline` 16, `provider-host` 23, `contract` 14,
+  `html` 12, `json` 10, `links` 10).
 - `npm run typecheck` (tsc --noEmit), `npm run lint` (eslint), `npm run build`
   (tsc -p tsconfig.build.json → `dist/`) — all clean at handoff.
 - **Stack:** Node >= 20 (developed on Node 24), pure ESM, TypeScript 5.9 (strict),
-  zod ^4.6.7, undici ^8.12.3, vitest ^5 (real timers), eslint 9 flat config.
+  zod ^4.6.7, undici ^8.12.3, cheerio ^1 (server-only HTML parsing), vitest ^5 (real timers),
+  eslint 9 flat config.
 - **Layout:**
   - `src/core/` — `types.ts`, `schemas.ts`, `provider.ts`, `links.ts`,
     `provider-host.ts`, `registry.ts`, `index.ts` (barrel)
   - `src/server/http/` — `engine.ts`, `guard.ts`, `dns.ts`, `headers.ts`, `cookies.ts`,
     `cache.ts`, `robots.ts`, `ip-types.ts`, `index.ts`
+  - `src/server/parse/` — `html.ts`, `json.ts`, `packer.ts`, `index.ts`
+  - `src/server/links/` — `pipeline.ts`, `index.ts`
+  - `src/server/obs/` — `redact.ts`, `events.ts`, `kill-switch.ts`, `health.ts`, `index.ts`
   - `tests/` — one test file per module plus shared `helpers.ts` / `http-helpers.ts`
   - `dist/` — committed build output (ESM + .d.ts)
 - **Commands:** `npm ci && npm test && npm run typecheck && npm run lint && npm run build`
 
-## 3. The exact next task (Phase 2, steps 3–5)
+## 3. The exact next task (Phase 3 gate — STOP first)
 
-Quoted from `docs/implementation-roadmap.md` ("The exact next implementation task"):
+`docs/implementation-roadmap.md` now requires a **pre-flight inspection checklist** before ANY
+provider code: for each candidate provider — (1) provider authorization mapped to POLICY.md §3,
+(2) service terms verified + archived (ambiguous/prohibitive ⇒ do not ship), (3) data contracts
+as recorded fixtures, (4) expected responses incl. error/rate-limit payloads, (5) playback
+compatibility within D7/D8 (no DRM), (6) rate limits + robots posture, (7) unresolved risks with
+mitigations or an explicit "do not build". Present the completed checklist to the owner and wait
+for approval. After approval, task 1 = Internet Archive reference provider, composed from
+`HttpEngine` + parse toolkit + `LinkPipeline` + observability wrapper + registry, with the
+unshorten-BEFORE-registry-lookup pre-step (D16/D17) implemented through the engine.
 
-1. **HTML/JSON toolkit**: cheerio + zod JSON parsing helpers, a `p/a/c/k/e`
-   (JsUnpacker-equivalent) unpacker and a `node:vm`-sandboxed snippet runner (no
-   network/fs) — only if a provider requires them.
-2. **Link pipeline** (`src/server/links/`): dedupe by URL, quality sort (`sortUrls`
-   semantics), subtitle name dedupe, TTL cache per `(provider, episodeId)` — reusing
-   `src/core/links.ts` behaviors and `TtlCache`.
-3. **Observability**: structured per-provider-call logging (via the engine's redacted
-   event sink), `GET /api/providers/health` shape, and the provider kill-switch flag
-   (mirrors `SitePlugin.status`, `RepositoryManager.kt:50–78`).
-
-Everything builds on the now-complete engine + guard (D18): fetch through `HttpEngine`,
-validate through the guard, unshorten link targets through the engine BEFORE registry
-lookups (per D16/D17). Do NOT start real providers (Phase 3) until these are in and
-tested — and then only with the user's explicit approval (see rule 0.3).
-
-## 4. Gotchas learned the hard way (details in docs/decisions.md D17/D18)
+## 4. Gotchas learned the hard way (details in docs/decisions.md D17/D18/D19)
 
 - Registry matching is **host-scoped** (D17): prefix stage plus explicit subdomain check
   plus a structural mirror rule. Never reintroduce full-URL fuzzy containment — that
@@ -97,6 +96,12 @@ tested — and then only with the user's explicit approval (see rule 0.3).
 - Tests use **real timers**; loopback test servers bind 127.0.0.1 and are allowed
   explicitly via `approvedDestinations` — no test ever contacts real private/metadata
   addresses.
+- **There is no JavaScript execution anywhere in this project** (D19): no `eval`, no
+  `new Function`, no `node:vm`. The `p/a/c/k/e` unpacker is a pure static string transform;
+  its output is untrusted DATA. General JS execution is deferred behind a separately
+  isolated runtime + security review (D6-F gate) — do not reintroduce it silently.
+- The link pipeline NEVER caches credential-bearing links (authorization/cookie/token
+  headers) under the shared scope — preserve that invariant when touching `src/server/links/`.
 
 ## 5. What is intentionally NOT in this repo
 
